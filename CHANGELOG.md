@@ -9,6 +9,7 @@ First public release.
 ### Added
 
 - **Runic Tome item.** Epic rarity, stacks to 1, fire-resistant. Granted automatically the first time a player joins a world (`FirstJoinHandler`).
+- **Soulbound behavior.** The Runic Tome is never dropped on death — any tome in the player's inventory at death is intercepted in `LivingDropsEvent`, its count is recorded in a persisted `stashedTomes` field on the player's capability, and the tome is restored to the new player's inventory during `PlayerEvent.Clone`. The stash survives server crashes between death and respawn because it's persisted to disk alongside the rest of `RunicTomeData`. Non-death clones (dimension change, End return) are a no-op. `keepInventory=true` is honored — `LivingDropsEvent` isn't fired and the vanilla path keeps the tome intact with no double-give.
 - **Per-player virtual book capability.** Unlocked books are stored in a persistent `IRunicTomeData` capability attached to each player; persisted across death, dimension change, and item loss.
 - **Server → client sync.** Custom packet layer (`RunicTomeNetwork`, `UnlockBookPacket`) pushes unlock events to the client-side `ClientDataCache`; full state syncs on login via `CapabilityEvents.syncTo`.
 - **Vanilla-book-styled GUI.** `RunicTomeScreen` renders the vanilla `textures/gui/book.png` at 192×192 with paginated clickable entries. Page forward/back via vanilla `PageButton` widgets or ←/→ keys. Entries land directly on page 0; clicking one closes the tome and delegates to the adapter's `open()` method.

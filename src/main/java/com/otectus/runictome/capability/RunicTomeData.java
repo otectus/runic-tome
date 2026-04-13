@@ -14,6 +14,7 @@ public class RunicTomeData implements IRunicTomeData {
 
     private final LinkedHashSet<BookKey> books = new LinkedHashSet<>();
     private boolean receivedTome = false;
+    private int stashedTomes = 0;
 
     @Override
     public boolean hasBook(BookKey key) {
@@ -46,10 +47,21 @@ public class RunicTomeData implements IRunicTomeData {
     }
 
     @Override
+    public int getStashedTomes() {
+        return stashedTomes;
+    }
+
+    @Override
+    public void setStashedTomes(int count) {
+        this.stashedTomes = Math.max(0, count);
+    }
+
+    @Override
     public void copyFrom(IRunicTomeData other) {
         this.books.clear();
         this.books.addAll(other.getBooks());
         this.receivedTome = other.hasReceivedTome();
+        this.stashedTomes = other.getStashedTomes();
     }
 
     @Override
@@ -61,6 +73,7 @@ public class RunicTomeData implements IRunicTomeData {
         }
         tag.put("books", list);
         tag.putBoolean("receivedTome", receivedTome);
+        tag.putInt("stashedTomes", stashedTomes);
         return tag;
     }
 
@@ -72,5 +85,6 @@ public class RunicTomeData implements IRunicTomeData {
             books.add(BookKey.fromNbt(list.getCompound(i)));
         }
         this.receivedTome = tag.getBoolean("receivedTome");
+        this.stashedTomes = tag.getInt("stashedTomes");
     }
 }

@@ -21,6 +21,11 @@ public interface IRunicTomeData extends INBTSerializable<CompoundTag> {
 
     void setReceivedTome(boolean value);
 
+    /** Number of Runic Tomes stashed on the player's last death, pending restoration on respawn. */
+    int getStashedTomes();
+
+    void setStashedTomes(int count);
+
     /** Copy state from another instance — used on PlayerEvent.Clone. */
     void copyFrom(IRunicTomeData other);
 }
