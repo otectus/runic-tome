@@ -1,0 +1,18 @@
+{
+  "item.runictome.runic_tome": "Runic Tome",
+  "itemGroup.runictome": "Runic Tome",
+  "screen.runictome.title": "Runic Tome",
+  "screen.runictome.count": "%s book(s) unlocked",
+  "screen.runictome.empty": "No books have been absorbed yet. Pick up a guide book to begin.",
+  "gui.runictome.open": "Open",
+  "gui.runictome.close": "Close",
+  "key.categories.runictome": "Runic Tome",
+  "key.runictome.open_tome": "Open Runic Tome",
+  "runictome.toast.unlocked": "Added to Runic Tome",
+  "runictome.no_adapter": "No adapter registered for %s",
+  "runictome.locked": "%s is locked — obtain its book first",
+  "runictome.unknown_item": "Unknown guide item %s",
+  "runictome.patchouli_missing": "Patchouli API not available",
+  "runictome.open_failed": "Failed to open %s",
+  "runictome.static_book": "Static book entry %s — no opener"
+}
