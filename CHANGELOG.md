@@ -2,6 +2,16 @@
 
 All notable changes to Runic Tome are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] — 2026-04-15
+
+### Added
+
+- **Custom item texture.** The Runic Tome now uses a dedicated sprite (`assets/runictome/textures/item/runic_tome.png`) instead of the vanilla `written_book` texture. Model `runictome:item/runic_tome` rewired accordingly.
+
+### Changed
+
+- **Soulbound on death.** The Runic Tome is no longer dropped on death. At `LivingDropsEvent` the tome is intercepted, its count stashed on the player's capability, and restored on `PlayerEvent.Clone`. Persists across server crashes between death and respawn. `keepInventory=true` is honored (no double-give). Non-death clones (dimension change, End return) are a no-op.
+
 ## [0.1.0] — 2026-04-13
 
 First public release.
