@@ -248,26 +248,7 @@ public class PatchouliGuideAdapter implements GuideSystemAdapter {
             } catch (Throwable ignored) {
             }
         }
-        return Component.literal(titleCase(key.bookId().getPath()));
-    }
-
-    private static String titleCase(String raw) {
-        String spaced = raw.replace('_', ' ').replace('/', ' ');
-        StringBuilder out = new StringBuilder(spaced.length());
-        boolean atStart = true;
-        for (int i = 0; i < spaced.length(); i++) {
-            char c = spaced.charAt(i);
-            if (Character.isWhitespace(c)) {
-                out.append(c);
-                atStart = true;
-            } else if (atStart) {
-                out.append(Character.toUpperCase(c));
-                atStart = false;
-            } else {
-                out.append(c);
-            }
-        }
-        return out.toString();
+        return Component.literal(com.otectus.runictome.api.NameFormat.titleCase(key.bookId().getPath()));
     }
 
     @Override

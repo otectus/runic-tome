@@ -54,11 +54,23 @@ Runic Tome works out of the box with no configuration, but you can customise its
         "occultism:dictionary_of_spirits",
     ]
 
+[ui]
+    showUnlockToast = true         # Toast notification when a new book is absorbed
+
+[performance]
+    # How often (in server ticks) the inventory-sweep fallback runs.
+    # Pickup/craft/smelt/container-close are handled separately and always
+    # absorb immediately. Set to 1 to restore legacy per-tick sweeping.
+    sweepIntervalTicks = 20
+
+[items]
+    grantTomeOnFirstJoin = true    # Give the tome on first login (off for quest-kit servers)
+
 [debug]
     verboseLogging = false         # Extra logging for capability sync and adapter resolution
 ```
 
-Inventory sweeping runs every tick unconditionally — there is no interval knob, and the cost is negligible (a few `HashMap` lookups per player per tick).
+Pickup, crafting, smelting, and container-close absorb books the instant they arrive. The timer-driven sweep runs once per second by default (`sweepIntervalTicks = 20`) as a safety net for inventory inserts that bypass Forge events (`/give`, hopper pushes, direct KubeJS grants).
 
 ---
 

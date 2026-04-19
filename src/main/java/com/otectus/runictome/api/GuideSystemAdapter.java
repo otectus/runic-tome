@@ -27,7 +27,7 @@ public interface GuideSystemAdapter {
     }
 
     default Component displayName(BookKey key) {
-        return Component.literal(key.bookId().toString());
+        return Component.literal(NameFormat.titleCase(key.bookId().getPath()));
     }
 
     default ItemStack displayIcon(BookKey key) {

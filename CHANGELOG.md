@@ -2,6 +2,28 @@
 
 All notable changes to Runic Tome are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses [Semantic Versioning](https://semver.org/).
 
+## [0.1.3] — 2026-04-19
+
+### Fixed
+
+- **Unlock toasts showed the book ID instead of its name.** When a book was absorbed, the toast displayed the raw `ResourceLocation` (e.g. `patchouli:book_of_the_dead`) instead of the human-readable title. `ClientDataCache.acceptUnlock` now resolves the display name through `RunicTomeAPI.adapterFor(systemId).displayName(key)` — matching what the tome's library screen already did. Patchouli books render their real localized titles; item-based books render their item display component.
+
+### Added
+
+- **`ui.showUnlockToast`** (bool, default `true`) — mutes the unlock toast per client.
+- **`performance.sweepIntervalTicks`** (int, default `20`, range `1..1200`) — how often the server sweeps player inventories for unabsorbed books. Set to `1` to restore the previous per-tick behaviour. Pickup/craft/smelt/container-close events remain handled separately and are unaffected.
+- **`items.grantTomeOnFirstJoin`** (bool, default `true`) — disable the auto-grant for servers that distribute the tome via quest rewards or starting kits.
+- **`com.otectus.runictome.api.NameFormat`** public helper — `titleCase(String)` extracted from `PatchouliGuideAdapter` so third-party adapters can reuse the same fallback formatter.
+- **Nicer default `GuideSystemAdapter.displayName`.** The interface default now returns `titleCase(key.bookId().getPath())` instead of the raw `ResourceLocation` string. Adapters that don't override `displayName` get readable fallbacks for free.
+
+### Changed
+
+- **Per-tick inventory sweep is now throttled to once per second** by default (configurable via `sweepIntervalTicks`). Pickup, craft, smelt, and container-close are still event-driven and absorb books immediately — the timer sweep exists only as a safety net for `/give`, hopper inserts, and other paths that bypass Forge's pickup events. This partially reverts the v0.1.0 change that dropped the interval knob; the trade-off of up-to-one-second latency on the fallback path is worth the ~95% reduction in per-player per-tick work on large servers.
+
+### Removed
+
+- **`CapabilityEvents.onJoinLevel` handler.** It fired a full-NBT sync on every dimension transition alongside the dedicated `onPlayerChangedDimension` / `onPlayerRespawn` / `onPlayerLoggedIn` handlers — a duplicate sync with no behavioural benefit.
+
 ## [0.1.2] — 2026-04-15
 
 ### Added
