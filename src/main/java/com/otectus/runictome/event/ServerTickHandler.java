@@ -23,6 +23,9 @@ public final class ServerTickHandler {
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         if (event.getServer() == null) return;
+        int interval = RunicTomeConfig.COMMON.sweepIntervalTicks.get();
+        if (interval <= 0) interval = 20;
+        if (event.getServer().getTickCount() % interval != 0) return;
         for (ServerPlayer sp : event.getServer().getPlayerList().getPlayers()) {
             sweep(sp);
         }

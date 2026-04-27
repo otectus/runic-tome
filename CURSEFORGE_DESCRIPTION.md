@@ -12,7 +12,7 @@ Open the tome to browse every manual you've ever collected. Click an entry. The 
 
 ## ✨ Features
 
-- **Absorbs every guide book you touch.** Ground pickup, crafting output, smelting output, quest rewards, KubeJS grants, /give commands, container close — all paths covered. Absorption happens within a single server tick.
+- **Absorbs every guide book you touch.** Ground pickup, crafting output, smelting output, quest rewards, KubeJS grants, /give commands, container close — all paths covered. Event-driven paths absorb within one tick; a configurable fallback sweep catches anything that bypasses Forge events.
 - **One item, forever.** The tome is given on your first world join, has Epic rarity, stacks to 1, and is fire-resistant. Your unlocked books persist across death, item loss, and the tome itself.
 - **Vanilla book UI.** Opening the tome shows a clean vanilla-styled book. Entries are listed as clickable links across pages. Arrow buttons (and ←/→ keys) flip pages. Clicking an entry launches the original book's native GUI.
 - **No inventory clutter.** Books live virtually in a per-player data store — not as real ItemStacks. Your inventory stays clean.
@@ -75,7 +75,7 @@ A: Only items explicitly recognised by an adapter or listed in `extraBookItemIds
 A: If your mod uses Patchouli, it already works. If it uses a standalone item, add the item ID to `extraBookItemIds`. If you're building a new guide system, implement `GuideSystemAdapter` and register via IMC — see the GitHub README.
 
 **Q: What's the performance cost?**
-A: Negligible. The tome sweeps each player's inventory once per tick, doing a handful of `HashMap` lookups. A few microseconds of CPU per player per second.
+A: Negligible. Pickup, craft, and container-close events absorb books the instant they arrive. A timer sweep runs once per second by default as a safety net for inventory inserts that bypass Forge events (e.g. `/give`). The per-player cost is a handful of `HashMap` lookups per second. All timings are configurable in `runictome-common.toml`.
 
 ---
 
