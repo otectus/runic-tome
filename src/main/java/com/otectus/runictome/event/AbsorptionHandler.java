@@ -4,9 +4,7 @@ import com.otectus.runictome.RunicTome;
 import com.otectus.runictome.RunicTomeConfig;
 import com.otectus.runictome.api.BookKey;
 import com.otectus.runictome.api.RunicTomeAPI;
-import com.otectus.runictome.capability.RunicTomeCapabilities;
-import com.otectus.runictome.network.RunicTomeNetwork;
-import com.otectus.runictome.network.UnlockBookPacket;
+import com.otectus.runictome.api.UnlockResult;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -24,6 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Mod.EventBusSubscriber(modid = RunicTome.MOD_ID)
 public final class AbsorptionHandler {
 
+    /** Cap so the once-per-item de-dup set can't grow without bound on a long-running server. */
+    private static final int MAX_UNRECOGNIZED_LOGGED = 512;
     private static final Set<ResourceLocation> UNRECOGNIZED_LOGGED = ConcurrentHashMap.newKeySet();
 
     private AbsorptionHandler() {}
@@ -40,12 +40,16 @@ public final class AbsorptionHandler {
             return;
         }
         BookKey key = maybe.get();
-        boolean newlyUnlocked = RunicTomeAPI.unlockBook(sp, key);
+        UnlockResult result = RunicTomeAPI.unlockBook(sp, key);
         if (RunicTomeConfig.COMMON.verboseLogging.get()) {
-            RunicTome.LOGGER.info("Absorbed {} for {} (newly={})", key, sp.getName().getString(), newlyUnlocked);
+            RunicTome.LOGGER.info("Absorb {} for {} -> {}", key, sp.getName().getString(), result);
         }
-        event.getItem().discard();
-        event.setCanceled(true);
+        // Only consume the item once the book is reliably stored; on FAILED (e.g. capability
+        // not yet attached) leave it on the ground so it is never silently destroyed.
+        if (result.isStored()) {
+            event.getItem().discard();
+            event.setCanceled(true);
+        }
     }
 
     @SubscribeEvent
@@ -64,20 +68,23 @@ public final class AbsorptionHandler {
         if (!(player instanceof ServerPlayer sp)) return;
         Optional<BookKey> maybe = RunicTomeAPI.identify(stack);
         if (maybe.isEmpty()) return;
-        BookKey key = maybe.get();
-        sp.getCapability(RunicTomeCapabilities.PLAYER_DATA).ifPresent(data -> {
-            if (data.unlockBook(key)) {
-                RunicTomeNetwork.sendTo(sp, new UnlockBookPacket(key));
-                CapabilityEvents.syncTo(sp);
-            }
-        });
-        stack.setCount(0);
+        UnlockResult result = RunicTomeAPI.unlockBook(sp, maybe.get());
+        // Only remove the crafted/smelted output once the book is reliably stored.
+        if (result.isStored()) {
+            stack.setCount(0);
+        }
     }
 
     private static void logUnrecognizedBookLike(ItemStack stack) {
+        // When the keyword catch-all is on it already absorbs book-like items, so anything
+        // reaching here is intentionally excluded (blocklisted, a block item, etc.) — don't
+        // suggest adding it to config.
+        if (RunicTomeConfig.COMMON.absorbUnknownBooks.get()) return;
         if (stack.isEmpty()) return;
         ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
         if (id == null) return;
+        if (UNRECOGNIZED_LOGGED.contains(id)) return;
+        if (UNRECOGNIZED_LOGGED.size() >= MAX_UNRECOGNIZED_LOGGED) return;
         if (!UNRECOGNIZED_LOGGED.add(id)) return;
         String path = id.getPath();
         if (path.contains("book") || path.contains("manual") || path.contains("guide")

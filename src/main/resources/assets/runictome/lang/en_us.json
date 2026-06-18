@@ -3,6 +3,7 @@
   "itemGroup.runictome": "Runic Tome",
   "screen.runictome.title": "Runic Tome",
   "screen.runictome.count": "%s book(s) unlocked",
+  "screen.runictome.search": "Search books…",
   "screen.runictome.empty": "No books have been absorbed yet. Pick up a guide book to begin.",
   "gui.runictome.open": "Open",
   "gui.runictome.close": "Close",

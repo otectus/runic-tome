@@ -3,6 +3,7 @@ package com.otectus.runictome.impl;
 import com.otectus.runictome.RunicTome;
 import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.player.Inventory;
@@ -40,7 +41,40 @@ public final class UseSimulator {
                 RunicTome.LOGGER.debug("UseSimulator: {} -> {}", fakeStack.getItem(), result.getResult());
             }
         } catch (Throwable t) {
+            // Foreign use() blew up — log with a stack trace and tell the player instead of
+            // silently doing nothing, so a broken integration is visible rather than mysterious.
             RunicTome.LOGGER.warn("UseSimulator: foreign use() threw for {}", fakeStack.getItem(), t);
+            player.displayClientMessage(
+                    Component.translatable("runictome.open_failed", fakeStack.getHoverName()), false);
+        } finally {
+            inv.items.set(slot, original);
+        }
+    }
+
+    /**
+     * Server-side counterpart to {@link #simulateClientUse}: swaps the player's
+     * selected slot for a synthetic stack, calls its {@code use} so a foreign mod
+     * runs its server-side open logic (e.g. sending its own GUI-open packet), then
+     * restores the original stack no matter what happens.
+     */
+    public static void simulateServerUse(ItemStack fakeStack, net.minecraft.server.level.ServerPlayer player) {
+        if (player.level().isClientSide) return;
+
+        CompoundTag tag = fakeStack.getOrCreateTag();
+        tag.putBoolean(VIRTUAL_TAG, true);
+
+        Inventory inv = player.getInventory();
+        int slot = inv.selected;
+        ItemStack original = inv.items.get(slot);
+        inv.items.set(slot, fakeStack);
+        try {
+            InteractionResultHolder<ItemStack> result =
+                    fakeStack.getItem().use(player.level(), player, InteractionHand.MAIN_HAND);
+            if (RunicTome.LOGGER.isDebugEnabled()) {
+                RunicTome.LOGGER.debug("UseSimulator(server): {} -> {}", fakeStack.getItem(), result.getResult());
+            }
+        } catch (Throwable t) {
+            RunicTome.LOGGER.warn("UseSimulator(server): foreign use() threw for {}", fakeStack.getItem(), t);
         } finally {
             inv.items.set(slot, original);
         }

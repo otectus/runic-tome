@@ -10,7 +10,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class RunicTomeNetwork {
 
-    private static final String PROTOCOL_VERSION = "1";
+    private static final String PROTOCOL_VERSION = "2";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.ChannelBuilder
             .named(new ResourceLocation(RunicTome.MOD_ID, "main"))
@@ -35,9 +35,31 @@ public final class RunicTomeNetwork {
                 .decoder(UnlockBookPacket::decode)
                 .consumerMainThread(UnlockBookPacket::handle)
                 .add();
+
+        CHANNEL.messageBuilder(OpenBookPacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(OpenBookPacket::encode)
+                .decoder(OpenBookPacket::decode)
+                .consumerMainThread(OpenBookPacket::handle)
+                .add();
+
+        CHANNEL.messageBuilder(ToggleFavoritePacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(ToggleFavoritePacket::encode)
+                .decoder(ToggleFavoritePacket::decode)
+                .consumerMainThread(ToggleFavoritePacket::handle)
+                .add();
+
+        CHANNEL.messageBuilder(SyncBookDefsPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(SyncBookDefsPacket::encode)
+                .decoder(SyncBookDefsPacket::decode)
+                .consumerMainThread(SyncBookDefsPacket::handle)
+                .add();
     }
 
     public static void sendTo(ServerPlayer player, Object msg) {
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), msg);
+    }
+
+    public static void sendToServer(Object msg) {
+        CHANNEL.sendToServer(msg);
     }
 }

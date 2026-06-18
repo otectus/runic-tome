@@ -47,4 +47,17 @@ public final class ClientDataCache {
     public static boolean hasBook(BookKey key) {
         return DATA.hasBook(key);
     }
+
+    public static boolean isFavorite(BookKey key) {
+        return DATA.isFavorite(key);
+    }
+
+    /**
+     * Optimistically flips the favorite state client-side for instant UI feedback. The server
+     * toggles authoritatively and re-syncs; both flip the same membership so they converge.
+     * @return the new favorite state.
+     */
+    public static boolean toggleFavoriteOptimistic(BookKey key) {
+        return DATA.toggleFavorite(key);
+    }
 }

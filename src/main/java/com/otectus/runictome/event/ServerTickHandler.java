@@ -4,6 +4,7 @@ import com.otectus.runictome.RunicTome;
 import com.otectus.runictome.RunicTomeConfig;
 import com.otectus.runictome.api.BookKey;
 import com.otectus.runictome.api.RunicTomeAPI;
+import com.otectus.runictome.api.UnlockResult;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
@@ -60,7 +61,9 @@ public final class ServerTickHandler {
             Optional<BookKey> maybe = RunicTomeAPI.identify(stack);
             if (maybe.isEmpty()) continue;
             BookKey key = maybe.get();
-            RunicTomeAPI.unlockBook(sp, key);
+            UnlockResult result = RunicTomeAPI.unlockBook(sp, key);
+            // Leave the item in place if it could not be stored; a later sweep retries.
+            if (!result.isStored()) continue;
             slots.set(i, ItemStack.EMPTY);
             changed = true;
             if (RunicTomeConfig.COMMON.verboseLogging.get()) {

@@ -4,6 +4,7 @@ import com.otectus.runictome.api.BookKey;
 import com.otectus.runictome.capability.RunicTomeData;
 import net.minecraft.SharedConstants;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.Bootstrap;
 import org.junit.jupiter.api.BeforeAll;
@@ -67,6 +68,43 @@ class RunicTomeDataTest {
 
         assertTrue(copy.hasReceivedTome());
         assertIterableEquals(expected, new ArrayList<>(copy.getBooks()));
+    }
+
+    @Test
+    void deserializeSkipsCorruptEntriesAndKeepsValidOnes() {
+        CompoundTag tag = new CompoundTag();
+        ListTag list = new ListTag();
+        // valid
+        list.add(patchouli("botania", "lexicon").toNbt());
+        // corrupt: unparseable ResourceLocation strings
+        CompoundTag bad = new CompoundTag();
+        bad.putString("system", "NOT VALID");
+        bad.putString("book", "still bad");
+        list.add(bad);
+        // valid
+        list.add(patchouli("create", "encyclopedia").toNbt());
+        tag.put("books", list);
+
+        RunicTomeData data = new RunicTomeData();
+        data.deserializeNBT(tag); // must not throw
+
+        assertEquals(2, data.getBooks().size());
+        assertTrue(data.hasBook(patchouli("botania", "lexicon")));
+        assertTrue(data.hasBook(patchouli("create", "encyclopedia")));
+    }
+
+    @Test
+    void deserializeCollapsesDuplicateEntries() {
+        CompoundTag tag = new CompoundTag();
+        ListTag list = new ListTag();
+        list.add(patchouli("botania", "lexicon").toNbt());
+        list.add(patchouli("botania", "lexicon").toNbt());
+        tag.put("books", list);
+
+        RunicTomeData data = new RunicTomeData();
+        data.deserializeNBT(tag);
+
+        assertEquals(1, data.getBooks().size());
     }
 
     @Test

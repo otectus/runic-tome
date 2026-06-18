@@ -13,6 +13,7 @@ import java.util.LinkedHashSet;
 public class RunicTomeData implements IRunicTomeData {
 
     private final LinkedHashSet<BookKey> books = new LinkedHashSet<>();
+    private final LinkedHashSet<BookKey> favorites = new LinkedHashSet<>();
     private boolean receivedTome = false;
     private int stashedTomes = 0;
 
@@ -28,12 +29,31 @@ public class RunicTomeData implements IRunicTomeData {
 
     @Override
     public boolean lockBook(BookKey key) {
+        favorites.remove(key); // a locked book can't stay favorited
         return books.remove(key);
     }
 
     @Override
     public Collection<BookKey> getBooks() {
         return Collections.unmodifiableCollection(books);
+    }
+
+    @Override
+    public boolean isFavorite(BookKey key) {
+        return favorites.contains(key);
+    }
+
+    @Override
+    public boolean toggleFavorite(BookKey key) {
+        if (!books.contains(key)) return false; // only unlocked books can be favorited
+        if (favorites.remove(key)) return false;
+        favorites.add(key);
+        return true;
+    }
+
+    @Override
+    public Collection<BookKey> getFavorites() {
+        return Collections.unmodifiableCollection(favorites);
     }
 
     @Override
@@ -60,6 +80,8 @@ public class RunicTomeData implements IRunicTomeData {
     public void copyFrom(IRunicTomeData other) {
         this.books.clear();
         this.books.addAll(other.getBooks());
+        this.favorites.clear();
+        this.favorites.addAll(other.getFavorites());
         this.receivedTome = other.hasReceivedTome();
         this.stashedTomes = other.getStashedTomes();
     }
@@ -72,6 +94,11 @@ public class RunicTomeData implements IRunicTomeData {
             list.add(key.toNbt());
         }
         tag.put("books", list);
+        ListTag favs = new ListTag();
+        for (BookKey key : favorites) {
+            favs.add(key.toNbt());
+        }
+        tag.put("favorites", favs);
         tag.putBoolean("receivedTome", receivedTome);
         tag.putInt("stashedTomes", stashedTomes);
         return tag;
@@ -82,7 +109,15 @@ public class RunicTomeData implements IRunicTomeData {
         books.clear();
         ListTag list = tag.getList("books", Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {
-            books.add(BookKey.fromNbt(list.getCompound(i)));
+            // Skip malformed entries instead of letting one bad key abort the whole load;
+            // the LinkedHashSet handles duplicates automatically.
+            BookKey.fromNbt(list.getCompound(i)).ifPresent(books::add);
+        }
+        favorites.clear();
+        ListTag favs = tag.getList("favorites", Tag.TAG_COMPOUND);
+        for (int i = 0; i < favs.size(); i++) {
+            // Only honor favorites that are still unlocked, in case data drifted.
+            BookKey.fromNbt(favs.getCompound(i)).filter(books::contains).ifPresent(favorites::add);
         }
         this.receivedTome = tag.getBoolean("receivedTome");
         this.stashedTomes = tag.getInt("stashedTomes");

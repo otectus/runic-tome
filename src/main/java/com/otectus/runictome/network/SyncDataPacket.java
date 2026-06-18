@@ -18,7 +18,8 @@ public record SyncDataPacket(CompoundTag payload) {
     }
 
     public static void handle(SyncDataPacket msg, Supplier<NetworkEvent.Context> ctx) {
-        ctx.get().setPacketHandled(true);
+        // Registered via consumerMainThread, so this already runs on the client thread
+        // and the packet is marked handled by Forge — just apply the update.
         ClientDataCache.acceptSync(msg.payload);
     }
 }

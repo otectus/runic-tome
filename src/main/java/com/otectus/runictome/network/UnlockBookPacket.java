@@ -22,7 +22,8 @@ public record UnlockBookPacket(BookKey key) {
     }
 
     public static void handle(UnlockBookPacket msg, Supplier<NetworkEvent.Context> ctx) {
-        ctx.get().setPacketHandled(true);
+        // Registered via consumerMainThread, so this already runs on the client thread
+        // (safe for the shared cache and the toast) and is marked handled by Forge.
         ClientDataCache.acceptUnlock(msg.key);
     }
 }

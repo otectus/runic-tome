@@ -8,9 +8,12 @@ import net.minecraft.server.Bootstrap;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.Optional;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BookKeyTest {
 
@@ -26,9 +29,31 @@ class BookKeyTest {
                 new ResourceLocation("runictome", "patchouli"),
                 new ResourceLocation("botania", "lexicon"));
         CompoundTag tag = original.toNbt();
-        BookKey parsed = BookKey.fromNbt(tag);
+        BookKey parsed = BookKey.fromNbt(tag).orElseThrow();
         assertEquals(original, parsed);
         assertEquals(original.hashCode(), parsed.hashCode());
+    }
+
+    @Test
+    void malformedNbtReturnsEmptyInsteadOfThrowing() {
+        CompoundTag tag = new CompoundTag();
+        tag.putString("system", "Not A Valid ID!!");
+        tag.putString("book", "also bad");
+        assertEquals(Optional.empty(), BookKey.fromNbt(tag));
+    }
+
+    @Test
+    void missingNbtKeysReturnEmpty() {
+        // tryParse("") yields null -> empty, so an absent/blank field can't crash data loading.
+        assertEquals(Optional.empty(), BookKey.fromNbt(new CompoundTag()));
+    }
+
+    @Test
+    void wellFormedNbtParses() {
+        CompoundTag tag = new CompoundTag();
+        tag.putString("system", "runictome:patchouli");
+        tag.putString("book", "botania:lexicon");
+        assertTrue(BookKey.fromNbt(tag).isPresent());
     }
 
     @Test

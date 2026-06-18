@@ -2,6 +2,40 @@
 
 All notable changes to Runic Tome are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] — 2026-06-18
+
+A reliability and feature release. The absorption pipeline no longer destroys items on a failed
+unlock, corrupt data can't break capability loading, and the tome UI is now a searchable,
+scrollable library with favorites.
+
+### Added
+
+- **Generic documentation-book catch-all.** A new `HeuristicBookAdapter` absorbs *any* item whose registry path matches a documentation keyword (`book`, `manual`, `guide`, `lexicon`, `tome`, `dictionary`, `codex`, `almanac`, `journal`, `encyclopedia`, `compendium`, `handbook`, `grimoire`, `primer`), so guide books from mods with no explicit support are absorbed automatically. Registered at lowest priority, so every explicit adapter still wins. Excludes block items (bookshelves), this mod's own items (the tome's path contains "tome"), and a configurable blocklist.
+- **Minecraft Comes Alive integration.** When `mca` is loaded, its lore books (`mca:book_*`), Family Tree, and registry books are registered automatically by scanning the item registry.
+- **Better Animals Plus integration.** `betteranimalsplus:animal_dictionary` is registered automatically when the mod is loaded.
+- **Immersive Engineering & Modonomicon integrations.** `immersiveengineering:manual` is registered automatically when IE is loaded; Modonomicon book items are registered by scanning its namespace (like the MCA scan).
+- **Datapack-defined books.** Packmakers can declare single-item books in `data/<namespace>/runictome/books/*.json` (`{ "item": "modid:item", "name": "Display Name" }`) — no code or config edits. Definitions are applied server-side on datapack load and synced to clients (`SyncBookDefsPacket`) so they display and open correctly on dedicated servers too.
+- **Searchable, scrollable tome UI.** The library is now a scrolling list (`ObjectSelectionList`) with a search box, real item icons, and an unlocked-book count, replacing the paginated vanilla-book layout. **Favorites:** right-click an entry to pin it to the top; favorites are persisted per-player and synced. Left-click opens; a failed open now reports to the player instead of silently doing nothing.
+- **Server-side re-open path.** Client→server `OpenBookPacket` plus `GuideSystemAdapter.openServer` let books that open their GUI from the server (e.g. Minecraft Comes Alive's `OpenGuiRequest`) re-open correctly from the tome. `UseSimulator` gained a server-side `simulateServerUse`. Client-driven books (Patchouli, Tinkers) are unaffected — Patchouli overrides `openServer` to a no-op.
+- **Openable IMC books.** The `register_book` IMC message now accepts an `ImcBook(BookKey, ItemStack)` payload; the supplied item is used as the list icon and replayed via `UseSimulator` to actually open the book. A plain `BookKey` payload still works (message-only).
+- **Explicit adapter precedence.** `GuideSystemAdapter.priority()` (default `100`, heuristic `0`) determines identification order, replacing the previous implicit dependence on registration order.
+- **API version constant.** `RunicTomeAPI.API_VERSION` lets integrators detect compatibility.
+
+### Changed
+
+- **Non-destructive absorption.** Unlock now returns an `UnlockResult` (`ADDED` / `ALREADY_HAD` / `FAILED`); the source item is consumed only once the book is confirmed stored. If the capability is missing or an error occurs, the item is left in the world/inventory instead of being silently destroyed (pickup, craft, and sweep paths).
+- **Corruption-tolerant data loading.** `BookKey.fromNbt` returns an `Optional` (via `ResourceLocation.tryParse` with blank-rejection) and `RunicTomeData` skips malformed or duplicate entries, so one bad entry can no longer abort capability/data loading.
+- **`UseSimulator` failure feedback.** A foreign `use()` that throws now logs a stack trace and shows the player an "open failed" message instead of silently no-opping; the borrowed inventory slot is always restored.
+- **Reduced network traffic.** A normal unlock sends only the incremental `UnlockBookPacket`; the full `SyncDataPacket` is reserved for login/respawn/dimension change.
+- **Network protocol bumped to `2`** (new packets; clients and servers must both update).
+
+### Config
+
+- `absorbUnknownBooks` (default `true`) — toggle the keyword catch-all.
+- `bookKeywords` — the keyword list matched against item registry paths.
+- `bookBlocklist` (default: vanilla `book`/`writable_book`/`written_book`/`enchanted_book`/`knowledge_book`) — item IDs the catch-all never absorbs. Add any functional book-like item from your pack here (e.g. spell tomes) so it is not absorbed.
+- `bookBlocklistMods` (default: `irons_spellbooks`, `ars_nouveau`) — mod IDs whose items the catch-all never absorbs, for mods whose "book"/"tome" items are functional gear. Documentation books these mods ship via Patchouli (e.g. Ars Nouveau's Worn Notebook) are still absorbed, since the Patchouli adapter runs before the catch-all.
+
 ## [0.1.3] — 2026-04-19
 
 ### Fixed

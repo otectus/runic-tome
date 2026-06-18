@@ -17,24 +17,27 @@ public final class RunicTomeAPI {
 
     private RunicTomeAPI() {}
 
+    /** API version, bumped on breaking changes so integrators can detect compatibility. */
+    public static final int API_VERSION = 2;
+
     public interface Delegate {
         void registerAdapter(GuideSystemAdapter adapter);
         Optional<GuideSystemAdapter> adapterFor(ResourceLocation systemId);
         Optional<BookKey> identify(ItemStack stack);
         Collection<GuideSystemAdapter> allAdapters();
         boolean isBookUnlocked(Player player, BookKey key);
-        boolean unlockBook(ServerPlayer player, BookKey key);
+        UnlockResult unlockBook(ServerPlayer player, BookKey key);
         boolean lockBook(ServerPlayer player, BookKey key);
         Collection<BookKey> getUnlockedBooks(Player player);
     }
 
-    private static Delegate DELEGATE = new Delegate() {
+    private static volatile Delegate DELEGATE = new Delegate() {
         @Override public void registerAdapter(GuideSystemAdapter adapter) { warn(); }
         @Override public Optional<GuideSystemAdapter> adapterFor(ResourceLocation systemId) { warn(); return Optional.empty(); }
         @Override public Optional<BookKey> identify(ItemStack stack) { warn(); return Optional.empty(); }
         @Override public Collection<GuideSystemAdapter> allAdapters() { warn(); return java.util.List.of(); }
         @Override public boolean isBookUnlocked(Player player, BookKey key) { warn(); return false; }
-        @Override public boolean unlockBook(ServerPlayer player, BookKey key) { warn(); return false; }
+        @Override public UnlockResult unlockBook(ServerPlayer player, BookKey key) { warn(); return UnlockResult.FAILED; }
         @Override public boolean lockBook(ServerPlayer player, BookKey key) { warn(); return false; }
         @Override public Collection<BookKey> getUnlockedBooks(Player player) { warn(); return java.util.List.of(); }
         private void warn() {
@@ -67,7 +70,7 @@ public final class RunicTomeAPI {
         return DELEGATE.isBookUnlocked(player, key);
     }
 
-    public static boolean unlockBook(ServerPlayer player, BookKey key) {
+    public static UnlockResult unlockBook(ServerPlayer player, BookKey key) {
         return DELEGATE.unlockBook(player, key);
     }
 

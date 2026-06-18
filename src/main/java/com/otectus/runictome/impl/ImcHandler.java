@@ -3,10 +3,12 @@ package com.otectus.runictome.impl;
 import com.otectus.runictome.RunicTome;
 import com.otectus.runictome.api.BookKey;
 import com.otectus.runictome.api.GuideSystemAdapter;
+import com.otectus.runictome.api.ImcBook;
 import com.otectus.runictome.api.ImcMethods;
 import com.otectus.runictome.api.RunicTomeAPI;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.fml.InterModComms;
@@ -44,11 +46,14 @@ public final class ImcHandler {
         event.getIMCStream(ImcMethods.REGISTER_BOOK::equals).forEach(msg -> {
             try {
                 Object payload = msg.messageSupplier().get();
-                if (payload instanceof BookKey key) {
+                if (payload instanceof ImcBook book) {
+                    ensureStaticRegistered();
+                    STATIC_ADAPTER.add(book.key(), book.openWith() == null ? ItemStack.EMPTY : book.openWith());
+                } else if (payload instanceof BookKey key) {
                     ensureStaticRegistered();
                     STATIC_ADAPTER.add(key, ItemStack.EMPTY);
                 } else {
-                    RunicTome.LOGGER.warn("IMC register_book from {} sent non-BookKey payload {}",
+                    RunicTome.LOGGER.warn("IMC register_book from {} sent unsupported payload {}",
                             msg.senderModId(), payload);
                 }
             } catch (Throwable t) {
@@ -87,8 +92,23 @@ public final class ImcHandler {
 
         @Override
         public void open(BookKey key, Player clientPlayer) {
+            ItemStack opener = icons.get(key);
+            if (opener != null && !opener.isEmpty()) {
+                // The mod supplied an item to open with — replay its use() client-side.
+                UseSimulator.simulateClientUse(opener.copy(), clientPlayer);
+                return;
+            }
             clientPlayer.displayClientMessage(
                     Component.translatable("runictome.static_book", key.bookId().toString()), false);
+        }
+
+        @Override
+        public void openServer(BookKey key, ServerPlayer serverPlayer) {
+            ItemStack opener = icons.get(key);
+            if (opener != null && !opener.isEmpty()) {
+                UseSimulator.simulateServerUse(opener.copy(), serverPlayer);
+            }
+            // No registered opener: open() shows a client message, nothing to do server-side.
         }
 
         @Override

@@ -17,6 +17,17 @@ public interface IRunicTomeData extends INBTSerializable<CompoundTag> {
 
     Collection<BookKey> getBooks();
 
+    /** @return true if the book is marked as a favorite. */
+    boolean isFavorite(BookKey key);
+
+    /**
+     * Flips the favorite state of an unlocked book.
+     * @return the new favorite state (true = now favorite), or false if the book isn't unlocked.
+     */
+    boolean toggleFavorite(BookKey key);
+
+    Collection<BookKey> getFavorites();
+
     boolean hasReceivedTome();
 
     void setReceivedTome(boolean value);

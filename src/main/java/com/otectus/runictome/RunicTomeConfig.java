@@ -22,6 +22,10 @@ public final class RunicTomeConfig {
         public final ForgeConfigSpec.BooleanValue absorbOnCraft;
         public final ForgeConfigSpec.BooleanValue verboseLogging;
         public final ForgeConfigSpec.ConfigValue<List<? extends String>> extraBookItemIds;
+        public final ForgeConfigSpec.BooleanValue absorbUnknownBooks;
+        public final ForgeConfigSpec.ConfigValue<List<? extends String>> bookKeywords;
+        public final ForgeConfigSpec.ConfigValue<List<? extends String>> bookBlocklist;
+        public final ForgeConfigSpec.ConfigValue<List<? extends String>> bookBlocklistMods;
         public final ForgeConfigSpec.BooleanValue showUnlockToast;
         public final ForgeConfigSpec.IntValue sweepIntervalTicks;
         public final ForgeConfigSpec.BooleanValue grantTomeOnFirstJoin;
@@ -41,6 +45,42 @@ public final class RunicTomeConfig {
                     "Example: [\"immersiveengineering:manual\", \"occultism:dictionary_of_spirits\"]")
                     .defineListAllowEmpty("extraBookItemIds", List.of(),
                             o -> o instanceof String s && s.contains(":"));
+
+            absorbUnknownBooks = b.comment(
+                    "Catch-all: absorb ANY item whose registry path matches a documentation",
+                    "keyword (see bookKeywords), unless it is a block item, one of this mod's",
+                    "own items, or listed in bookBlocklist. This is what captures guide books",
+                    "from mods that have no explicit Runic Tome support. Disable to absorb only",
+                    "explicitly-supported books (Patchouli, Tinkers, configured, IMC).")
+                    .define("absorbUnknownBooks", true);
+
+            bookKeywords = b.comment(
+                    "Keywords matched as a case-insensitive substring against an item's registry",
+                    "path to treat it as a documentation book when absorbUnknownBooks is enabled.")
+                    .defineListAllowEmpty("bookKeywords",
+                            List.of("book", "manual", "guide", "guidebook", "lexicon", "tome",
+                                    "dictionary", "codex", "almanac", "journal", "encyclopedia",
+                                    "compendium", "handbook", "grimoire", "primer"),
+                            o -> o instanceof String);
+
+            bookBlocklist = b.comment(
+                    "Item IDs never absorbed by the keyword catch-all (vanilla and functional books).",
+                    "Use \"modid:item_path\" form. Block items and this mod's items are excluded already.")
+                    .defineListAllowEmpty("bookBlocklist",
+                            List.of("minecraft:book", "minecraft:writable_book", "minecraft:written_book",
+                                    "minecraft:enchanted_book", "minecraft:knowledge_book"),
+                            o -> o instanceof String s && s.contains(":"));
+
+            bookBlocklistMods = b.comment(
+                    "Mod IDs whose items are never absorbed by the keyword catch-all. Use this for",
+                    "mods whose 'book'/'tome' items are functional gear rather than documentation.",
+                    "Defaults exclude Iron's Spells 'n Spellbooks (spellbooks) and Ars Nouveau",
+                    "(spell books / caster tomes). Note: documentation books these mods ship via",
+                    "Patchouli (e.g. Ars Nouveau's Worn Notebook) are still absorbed, because the",
+                    "Patchouli adapter runs before this catch-all.")
+                    .defineListAllowEmpty("bookBlocklistMods",
+                            List.of("irons_spellbooks", "ars_nouveau"),
+                            o -> o instanceof String);
             b.pop();
 
             b.push("ui");

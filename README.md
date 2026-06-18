@@ -15,15 +15,15 @@ No more dragging eight identical lexicons between ender chests. No more losing y
 
 ## Features
 
-- **Automatic absorption.** Guide books are consumed from your inventory the moment they arrive — no interaction required. Works with ground pickup, crafting output, smelting output, container-close (quest rewards, FTB popups, chests), direct inventory grants (KubeJS, `/give`), and a per-tick fallback sweep.
-- **Virtual storage.** Unlocked books live in a per-player server-side capability, persisted to disk and synced to the client. No duplicated ItemStacks, no inventory clutter.
-- **Vanilla-book UI.** The tome opens as a vanilla-styled book (no fullscreen menu). Each page lists your unlocked books as clickable entries; clicking one closes the tome and launches the original book's native GUI.
+- **Automatic absorption — and never destructive.** Guide books are consumed from your inventory the moment they arrive — no interaction required. Works with ground pickup, crafting output, smelting output, container-close (quest rewards, FTB popups, chests), direct inventory grants (KubeJS, `/give`), and a low-frequency safety sweep (configurable). A book is only ever removed once it's confirmed stored in your tome — if storage fails, the item is left untouched.
+- **Virtual storage.** Unlocked books live in a per-player server-side capability, persisted to disk and synced to the client. No duplicated ItemStacks, no inventory clutter. Corrupt or outdated entries are skipped on load rather than breaking your save.
+- **Searchable library UI.** The tome opens to a scrolling list of your books with their real item icons and a live count. **Search** by name, **favorite** any book (right-click) to pin it to the top, and **left-click** to launch the original book's native GUI. A book that fails to open tells you why instead of silently doing nothing.
 - **Patchouli support — zero compile-time dependency.** Runic Tome uses reflection to detect Patchouli at runtime and recognise **both** flavors of Patchouli books:
   - Generic `patchouli:guide_book` stacks with `{patchouli:book: "modid:book_id"}` NBT (fast NBT match).
   - Custom-item books declared with `dont_generate_book: true` (e.g. Ars Nouveau's Worn Notebook, Botania's Lexica Botania) — resolved by walking `BookRegistry` and mapping the book's item to its ID.
-- **Tinkers' Construct out of the box.** When `tconstruct` is loaded, all six standard books (Materials and You, Puny Smelting, Mighty Smelting, Fantastic Foundry, Encyclopedia of Tinkering, Tinkers' Gadgetry) are registered automatically.
-- **Config-driven long tail.** Modpack authors can add any standalone book-like item to the absorption list via `extraBookItemIds` in `runictome-common.toml` without touching code.
-- **Public API & IMC.** Other mods can register their own `GuideSystemAdapter` via either the public `RunicTomeAPI.registerAdapter(...)` or via Inter-Mod Communication (`InterModComms.sendTo("runictome", "register_adapter", supplier)`).
+- **Built-in integrations.** Tinkers' Construct (all six books), Minecraft Comes Alive, Better Animals Plus, Immersive Engineering (manual), and Modonomicon are detected and registered automatically when loaded — plus a keyword catch-all that absorbs guide books from mods with no explicit support.
+- **Config- and datapack-driven long tail.** Modpack authors can add any standalone book-like item via `extraBookItemIds` in `runictome-common.toml`, or define books in a datapack at `data/<namespace>/runictome/books/*.json` — no code, and datapack books sync to clients on dedicated servers.
+- **Public API & IMC.** Other mods can register their own `GuideSystemAdapter` via the public `RunicTomeAPI.registerAdapter(...)` or via Inter-Mod Communication — including the `register_book` IMC message with an `ImcBook` payload for a single openable book.
 - **Given on first join.** The tome is granted automatically the first time a player joins a world — no crafting required.
 
 ---
@@ -50,7 +50,6 @@ Runic Tome works out of the box with no configuration, but you can customise its
     # Extra item IDs to treat as single-item guide books.
     # Unknown or malformed IDs are logged and skipped.
     extraBookItemIds = [
-        "immersiveengineering:manual",
         "occultism:dictionary_of_spirits",
     ]
 
@@ -70,17 +69,19 @@ Runic Tome works out of the box with no configuration, but you can customise its
     verboseLogging = false         # Extra logging for capability sync and adapter resolution
 ```
 
-Pickup, crafting, smelting, and container-close absorb books the instant they arrive. The timer-driven sweep runs once per second by default (`sweepIntervalTicks = 20`) as a safety net for inventory inserts that bypass Forge events (`/give`, hopper pushes, direct KubeJS grants).
+Pickup, crafting, smelting, and container-close absorb books the instant they arrive. The
+timer-driven sweep runs once per second by default (`sweepIntervalTicks = 20`) as a safety net for
+inventory inserts that bypass Forge events (`/give`, hopper pushes, direct KubeJS grants).
 
 ---
 
 ## Usage
 
 1. Join a world. A **Runic Tome** appears in your inventory.
-2. Pick up, craft, or receive any supported guide book. It is absorbed within one tick.
+2. Pick up, craft, or receive any supported guide book. It is absorbed near-instantly.
 3. Right-click the Runic Tome (or press the bound key) to open your library.
-4. Click any entry to launch its native book UI.
-5. Page forward/back with the arrow buttons or the ← → keys. Press Escape or click **Done** to close.
+4. Type in the search box to filter, **left-click** an entry to launch its native book UI, or **right-click** to favorite it (favorites pin to the top).
+5. Scroll through the list. Press Escape or click **Done** to close.
 
 The tome itself has `EPIC` rarity, stacks to 1, and is fire-resistant — losing it is hard, but even if you do, your unlocked books are stored per-player and survive death, item loss, and the loss of the tome.
 
@@ -92,8 +93,10 @@ Out of the box:
 
 - **Patchouli** (and every mod that ships a Patchouli book — Botania, Ars Nouveau, Ice & Fire Delight, etc.)
 - **Tinkers' Construct** (all six standard books)
+- **Minecraft Comes Alive**, **Better Animals Plus**, **Immersive Engineering** (manual), **Modonomicon**
+- A **keyword catch-all** that absorbs guide books from mods with no explicit support (configurable; see `absorbUnknownBooks`).
 
-Additional books can be enabled via `extraBookItemIds` in the config. For mod authors building new integrations, see [Integration API](#integration-api) below.
+Additional books can be enabled via `extraBookItemIds` in the config or a datapack (`data/<namespace>/runictome/books/*.json`). For mod authors building new integrations, see [Integration API](#integration-api) below.
 
 ---
 
@@ -121,10 +124,17 @@ A `GuideSystemAdapter` provides:
 ### Via IMC (no compile dependency on Runic Tome)
 
 ```java
+// Register a whole guide system:
 InterModComms.sendTo("runictome", "register_adapter", () -> myAdapterInstance);
+
+// Or register a single openable book (the item is used as icon and opened via its use()):
+InterModComms.sendTo("runictome", "register_book",
+        () -> new ImcBook(new BookKey(systemId, bookId), new ItemStack(myBookItem)));
 ```
 
-The IMC payload must implement `GuideSystemAdapter`. See `ImcHandler.java` for details.
+The `register_adapter` payload must implement `GuideSystemAdapter`; `register_book` accepts an
+`ImcBook` (or a plain `BookKey` for a message-only entry). Use `RunicTomeAPI.API_VERSION` to check
+compatibility. See `ImcHandler.java` for details.
 
 ---
 
