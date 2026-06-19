@@ -2,6 +2,50 @@
 
 All notable changes to Runic Tome are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] — 2026-06-19
+
+A targeted classification fix. The keyword catch-all no longer mistakes functional modded gear for
+documentation, and packmakers gain explicit tag-based override channels in both directions.
+
+### Fixed
+
+- **Scriptor functional tomes were being absorbed and deleted.** The keyword catch-all
+  (`HeuristicBookAdapter`) classified any item whose registry path contained a documentation keyword
+  (`tome`, `book`, …) as a guide book, so Scriptor's functional `*tome*`/`*book*` items were stored as
+  `BookKey`s and the absorption pipeline destroyed the physical item on pickup/craft/smelt/sweep. Fixed
+  two ways: `scriptor` is now in the `bookBlocklistMods` default, and the heuristic gained a
+  `looksFunctional` safety net that rejects items whose path contains `spell`, `scroll`, `caster`,
+  `focus`, `rune`, or `wand`, or that are damageable or enchanted — before the keyword match runs.
+
+### Added
+
+- **Positive `#runictome:guide_books` tag.** A new `runictome:tagged` adapter (priority `50`, between
+  concrete adapters and the keyword catch-all) absorbs any item in this tag, letting packmakers
+  force-absorb a guide book the heuristic rejects (e.g. a legitimately-named "runic guide" suppressed by
+  the `rune` functional signal).
+- **`#runictome:absorb_blocklist` tag.** A hard opt-out checked by both the tagged and heuristic
+  adapters; it overrides `#runictome:guide_books`, giving precedence **never-absorb > positive tag >
+  heuristic**. Both tags ship empty and are append-friendly (`"replace": false`).
+- **`/runictome debug identify`** — reports the held item's id, its `absorb_blocklist` membership, the
+  first adapter that would match (and, for the heuristic, which keyword matched), and a final
+  absorb/no-absorb verdict.
+- **Verbose heuristic logging.** With `verboseLogging` enabled, the catch-all logs matched keywords and
+  the reason it skipped an item (blocked namespace, item blocklist, `looksFunctional`, or
+  `absorb_blocklist` tag).
+
+### Config
+
+- `bookBlocklistMods` default now includes `scriptor` alongside `irons_spellbooks` and `ars_nouveau`.
+
+### Notes for packmakers
+
+- The `bookBlocklistMods` namespace blocklist and the `#runictome:absorb_blocklist` tag gate **only**
+  the keyword catch-all and the positive `guide_books` tag. Explicit/Patchouli/IMC/datapack-defined
+  books from a blocked namespace are still absorbed, because those adapters run first.
+- To re-include a guide the new `looksFunctional`/`rune` signals reject, add its item id to
+  `#runictome:guide_books`. To force-exclude any item, add it to `#runictome:absorb_blocklist` (it wins
+  over `guide_books`).
+
 ## [0.2.0] — 2026-06-18
 
 A reliability and feature release. The absorption pipeline no longer destroys items on a failed

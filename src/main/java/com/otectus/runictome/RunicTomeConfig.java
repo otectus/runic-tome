@@ -74,12 +74,13 @@ public final class RunicTomeConfig {
             bookBlocklistMods = b.comment(
                     "Mod IDs whose items are never absorbed by the keyword catch-all. Use this for",
                     "mods whose 'book'/'tome' items are functional gear rather than documentation.",
-                    "Defaults exclude Iron's Spells 'n Spellbooks (spellbooks) and Ars Nouveau",
-                    "(spell books / caster tomes). Note: documentation books these mods ship via",
-                    "Patchouli (e.g. Ars Nouveau's Worn Notebook) are still absorbed, because the",
-                    "Patchouli adapter runs before this catch-all.")
+                    "Defaults exclude Iron's Spells 'n Spellbooks (spellbooks), Ars Nouveau",
+                    "(spell books / caster tomes), and Scriptor (functional '*tome*'/'*book*' items).",
+                    "Note: explicitly-supported documentation books these mods ship via Patchouli,",
+                    "IMC, datapacks, or the positive #runictome:guide_books tag are still absorbed,",
+                    "because those adapters run before this catch-all (e.g. Ars Nouveau's Worn Notebook).")
                     .defineListAllowEmpty("bookBlocklistMods",
-                            List.of("irons_spellbooks", "ars_nouveau"),
+                            List.of("irons_spellbooks", "ars_nouveau", "scriptor"),
                             o -> o instanceof String);
             b.pop();
 

@@ -33,6 +33,7 @@ public final class ModIntegrations {
         registerImmersiveEngineering();
         registerModonomicon();
         registerConfigBooks();
+        registerTaggedGuideBooks();
         registerHeuristic();
 
         var adapters = RunicTomeAPI.allAdapters();
@@ -126,6 +127,12 @@ public final class ModIntegrations {
         RunicTomeAPI.registerAdapter(adapter);
         RunicTome.LOGGER.info("Registered {} adapter for {}", systemPrefix, itemId);
         return true;
+    }
+
+    private static void registerTaggedGuideBooks() {
+        RunicTomeAPI.registerAdapter(
+                new TaggedGuideBookAdapter(new ResourceLocation(RunicTome.MOD_ID, "tagged")));
+        RunicTome.LOGGER.info("Runic Tome: #runictome:guide_books tag adapter registered");
     }
 
     private static void registerHeuristic() {

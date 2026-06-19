@@ -9,6 +9,8 @@ import com.otectus.runictome.api.GuideSystemAdapter;
 import com.otectus.runictome.api.RunicTomeAPI;
 import com.otectus.runictome.capability.RunicTomeCapabilities;
 import com.otectus.runictome.event.CapabilityEvents;
+import com.otectus.runictome.integration.HeuristicBookAdapter;
+import com.otectus.runictome.integration.ModTags;
 import com.otectus.runictome.item.ModItems;
 import com.otectus.runictome.network.RunicTomeNetwork;
 import com.otectus.runictome.network.UnlockBookPacket;
@@ -21,6 +23,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -48,7 +51,8 @@ public final class RunicTomeCommand {
                                 .then(Commands.argument("book", ResourceLocationArgument.id())
                                         .executes(RunicTomeCommand::lockBook))))
                 .then(Commands.literal("debug")
-                        .then(Commands.literal("dump").executes(RunicTomeCommand::debugDump))));
+                        .then(Commands.literal("dump").executes(RunicTomeCommand::debugDump))
+                        .then(Commands.literal("identify").executes(RunicTomeCommand::debugIdentify))));
     }
 
     private static int debugDump(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {
@@ -59,6 +63,40 @@ public final class RunicTomeCommand {
             int bulk = a.supportsBulkEnumeration() ? a.enumerateAll().size() : -1;
             src.sendSuccess(() -> Component.literal(" - " + a.systemId() + "  bulk=" + bulk), false);
         }
+        return 1;
+    }
+
+    private static int debugIdentify(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        ServerPlayer sp = ctx.getSource().getPlayerOrException();
+        CommandSourceStack src = ctx.getSource();
+        ItemStack held = sp.getMainHandItem();
+        if (held.isEmpty()) {
+            src.sendFailure(Component.literal("Hold an item in your main hand to identify it."));
+            return 0;
+        }
+        ResourceLocation heldId = ForgeRegistries.ITEMS.getKey(held.getItem());
+        src.sendSuccess(() -> Component.literal("Held item: " + heldId), false);
+        src.sendSuccess(() -> Component.literal("In #runictome:absorb_blocklist: "
+                + held.is(ModTags.Items.ABSORB_BLOCKLIST)), false);
+
+        GuideSystemAdapter match = null;
+        for (GuideSystemAdapter a : RunicTomeAPI.allAdapters()) {
+            if (a.identify(held).isPresent()) {
+                match = a;
+                break;
+            }
+        }
+        if (match == null) {
+            src.sendSuccess(() -> Component.literal("Verdict: would NOT absorb (no adapter matched)"), false);
+            return 1;
+        }
+        final GuideSystemAdapter matched = match;
+        src.sendSuccess(() -> Component.literal("Matched adapter: " + matched.systemId()), false);
+        if (matched instanceof HeuristicBookAdapter heuristic) {
+            heuristic.matchedKeyword(held).ifPresent(kw ->
+                    src.sendSuccess(() -> Component.literal("Matched keyword: '" + kw + "'"), false));
+        }
+        src.sendSuccess(() -> Component.literal("Verdict: would absorb via " + matched.systemId()), false);
         return 1;
     }
 
