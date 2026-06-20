@@ -2,7 +2,7 @@
 
 All notable changes to Runic Tome are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses [Semantic Versioning](https://semver.org/).
 
-## [0.2.1] — 2026-06-19
+## [0.4.0] — 2026-06-19
 
 A targeted classification fix. The keyword catch-all no longer mistakes functional modded gear for
 documentation, and packmakers gain explicit tag-based override channels in both directions.
@@ -35,7 +35,8 @@ documentation, and packmakers gain explicit tag-based override channels in both 
 
 ### Config
 
-- `bookBlocklistMods` default now includes `scriptor` alongside `irons_spellbooks` and `ars_nouveau`.
+- `bookBlocklistMods` default now includes `scriptor` alongside `irons_spellbooks`, `ars_nouveau`,
+  and `rpglore`.
 
 ### Notes for packmakers
 
@@ -45,6 +46,42 @@ documentation, and packmakers gain explicit tag-based override channels in both 
 - To re-include a guide the new `looksFunctional`/`rune` signals reject, add its item id to
   `#runictome:guide_books`. To force-exclude any item, add it to `#runictome:absorb_blocklist` (it wins
   over `guide_books`).
+
+## [0.2.1] — 2026-06-18
+
+A correctness release that stops the keyword catch-all from absorbing functional gear. The
+catch-all matches any item whose registry path contains a documentation keyword, which wrongly
+swallowed spellbooks (e.g. Apprentice's Codex's "Isekai Travel Guidebook", an Iron's Spells 'n
+Spellbooks spellbook) and parallel collection containers (RPG Lore's "Lore Codex").
+
+### Fixed
+
+- **Spellbooks are never absorbed.** Iron's Spells 'n Spellbooks gear is now detected
+  *structurally* — any item that extends `io.redspace.ironsspellbooks.item.SpellBook` or is a spell
+  container (`ISpellContainer.isSpellContainer`) is excluded, covering spellbooks, scrolls, and
+  spell-imbued curios. Because detection is by class/capability rather than namespace, this also
+  covers **every Iron's Spellbooks addon** (Apprentice's Codex, GTBC's Spellbooks, Monsters &
+  Spellbooks, …) automatically — no per-mod blocklist entry needed. Detection is reflective, so
+  there is still no compile-time dependency on Iron's Spellbooks.
+- **RPG Lore left to its own system.** `rpglore` is now blocklisted, so the Runic Tome no longer
+  absorbs the Lore Codex (RPG Lore's own soul-bound collection container) or RPG Lore's lore books,
+  avoiding two collection systems fighting over the same items.
+
+### Added
+
+- **Global "never absorb" exclusion layer.** `AdapterRegistry` now checks a set of exclusion
+  predicates *before* any adapter runs, so an excluded item is never identified as a book regardless
+  of which adapter (heuristic, Patchouli, config, IMC) would otherwise match it.
+- **Tag-based blocklist.** A new `bookBlocklistTags` config (default `["runictome:absorb_blocklist"]`)
+  excludes any item carrying a listed item tag. The shipped `#runictome:absorb_blocklist` tag is
+  empty and append-friendly — modpacks, servers, and other mods can add functional items to it to
+  exclude them without knowing exact item IDs or touching config.
+
+### Config
+
+- `bookBlocklistTags` (default `runictome:absorb_blocklist`) — item tags whose members are never
+  absorbed by any adapter.
+- `bookBlocklistMods` default now also includes `rpglore`.
 
 ## [0.2.0] — 2026-06-18
 

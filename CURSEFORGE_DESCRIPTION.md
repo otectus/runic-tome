@@ -71,7 +71,7 @@ A: Your unlocked books are stored per-player, not in the tome itself. Craft a ne
 A: Yes. The mod is server-authoritative — all absorption decisions happen server-side and the unlocked-book list is synced to clients. Install it on both sides.
 
 **Q: Will it absorb something I don't want absorbed?**
-A: The keyword catch-all only matches book-like items and skips block items, vanilla books, and a configurable blocklist (including functional "spellbook"/"tome" gear from mods like Iron's Spells and Ars Nouveau). And nothing is ever destroyed on a failed unlock — if a book can't be stored, the item simply stays in your inventory.
+A: The keyword catch-all only matches book-like items and skips block items, vanilla books, and a configurable blocklist (including functional "spellbook"/"tome" gear from mods like Iron's Spells, Ars Nouveau, RPG Lore, and Scriptor). It also skips anything that *looks functional* — items whose path contains `spell`, `scroll`, `caster`, `focus`, `rune`, or `wand`, or that are damageable or enchanted — so functional gear with a book-like name is left alone. Packmakers get two override tags, `#runictome:guide_books` (force-absorb) and `#runictome:absorb_blocklist` (never absorb), and can run `/runictome debug identify` to see exactly how a held item would be classified. And nothing is ever destroyed on a failed unlock — if a book can't be stored, the item simply stays in your inventory.
 
 **Q: How do I add support for a book my mod uses?**
 A: If your mod uses Patchouli, it already works. If it uses a standalone item, add the item ID to `extraBookItemIds`. If you're building a new guide system, implement `GuideSystemAdapter` and register via IMC — see the GitHub README.

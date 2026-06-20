@@ -53,6 +53,21 @@ Runic Tome works out of the box with no configuration, but you can customise its
         "occultism:dictionary_of_spirits",
     ]
 
+    # Keyword catch-all: absorb any item whose registry path matches a
+    # documentation keyword. Disable to absorb only explicitly-supported books.
+    absorbUnknownBooks = true
+
+    # Mod IDs the catch-all never touches, for mods whose "book"/"tome" items are
+    # functional gear rather than documentation.
+    bookBlocklistMods = ["irons_spellbooks", "ars_nouveau", "rpglore", "scriptor"]
+
+    # Individual item IDs the catch-all never absorbs (vanilla books are blocked already).
+    bookBlocklist = []
+
+    # Item tags whose members are NEVER absorbed by any adapter — the escape hatch
+    # for functional items. Append to #runictome:absorb_blocklist from a datapack.
+    bookBlocklistTags = ["runictome:absorb_blocklist"]
+
 [ui]
     showUnlockToast = true         # Toast notification when a new book is absorbed
 
@@ -94,9 +109,28 @@ Out of the box:
 - **Patchouli** (and every mod that ships a Patchouli book — Botania, Ars Nouveau, Ice & Fire Delight, etc.)
 - **Tinkers' Construct** (all six standard books)
 - **Minecraft Comes Alive**, **Better Animals Plus**, **Immersive Engineering** (manual), **Modonomicon**
-- A **keyword catch-all** that absorbs guide books from mods with no explicit support (configurable; see `absorbUnknownBooks`).
+- A **keyword catch-all** that absorbs guide books from mods with no explicit support (configurable; see `absorbUnknownBooks`). It skips block items, vanilla books, blocklisted namespaces, and items that *look functional* — anything whose path contains `spell`, `scroll`, `caster`, `focus`, `rune`, or `wand`, or that is damageable or enchanted — so functional "tome"/"book" gear is left alone.
 
 Additional books can be enabled via `extraBookItemIds` in the config or a datapack (`data/<namespace>/runictome/books/*.json`). For mod authors building new integrations, see [Integration API](#integration-api) below.
+
+### Forcing or preventing absorption
+
+Two append-friendly item tags give packmakers explicit control over the catch-all, taking precedence **never-absorb > positive tag > heuristic**:
+
+- **`#runictome:guide_books`** — force-absorb an item the heuristic would otherwise skip (e.g. a legitimately-named book the `looksFunctional` check rejects).
+- **`#runictome:absorb_blocklist`** — hard opt-out; an item here is never absorbed by any adapter, even if it is also in `guide_books`.
+
+Both ship empty (`"replace": false`); add entries from a datapack at `data/runictome/tags/items/<tag>.json`. Namespace-level exclusions go in the `bookBlocklistMods` config instead.
+
+### Commands
+
+`/runictome` (requires permission level 2):
+
+- `list` — list the books you've unlocked.
+- `give` — grant yourself a Runic Tome.
+- `unlock <system> <book>` / `lock <system> <book>` — add or remove a book entry.
+- `debug dump` — list every registered adapter.
+- `debug identify` — explain how the held item would be classified: its id, `absorb_blocklist` membership, the first adapter that would match (and, for the catch-all, which keyword matched), and a final absorb/no-absorb verdict. The fastest way to diagnose why a book is or isn't being absorbed.
 
 ---
 

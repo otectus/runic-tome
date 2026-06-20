@@ -82,7 +82,7 @@ public class HeuristicBookAdapter implements GuideSystemAdapter {
      * namespace blocklist, item blocklist, and the {@link #looksFunctional} safety net before the
      * keyword loop.
      */
-    Optional<BookKey> classify(ResourceLocation id, ItemStack stack) {
+    public Optional<BookKey> classify(ResourceLocation id, ItemStack stack) {
         if (blockedNamespaces.contains(id.getNamespace())) {
             logSkip(stack, "blocked namespace " + id.getNamespace());
             return Optional.empty();
@@ -125,7 +125,7 @@ public class HeuristicBookAdapter implements GuideSystemAdapter {
      * First keyword whose substring matches the item's path, ignoring blocklists and the functional
      * check. Used by {@code /runictome debug identify} to explain a match.
      */
-    Optional<String> matchedKeyword(ItemStack stack) {
+    public Optional<String> matchedKeyword(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return Optional.empty();
         ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
         if (id == null) return Optional.empty();
