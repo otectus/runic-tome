@@ -9,9 +9,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.toasts.SystemToast;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Optional;
 
 public final class ClientDataCache {
@@ -26,9 +26,27 @@ public final class ClientDataCache {
         }
     }
 
-    public static void acceptUnlock(BookKey key) {
-        if (!DATA.unlockBook(key)) return;
-        if (!RunicTomeConfig.COMMON.showUnlockToast.get()) return;
+    /**
+     * Drops every cached book. Called when the client leaves a world so the next world does not
+     * briefly show the previous one's library in the window between joining and the login sync.
+     */
+    public static void clear() {
+        DATA.clear();
+    }
+
+    /**
+     * Applies the server's authoritative favorite state for one book. Absolute rather than a flip,
+     * so it converges no matter how it interleaves with the optimistic local toggle in
+     * {@link #toggleFavoriteOptimistic}.
+     */
+    public static void acceptFavorite(BookKey key, boolean favorite) {
+        DATA.setFavorite(key, favorite);
+    }
+
+    public static void acceptUnlock(BookKey key, ItemStack stack) {
+        boolean added = DATA.unlockBook(key, stack);
+        if (!added) return;
+        if (!RunicTomeConfig.showUnlockToast()) return;
         Minecraft mc = Minecraft.getInstance();
         Optional<GuideSystemAdapter> adapter = RunicTomeAPI.adapterFor(key.systemId());
         Component body = adapter.map(a -> a.displayName(key))
@@ -40,12 +58,25 @@ public final class ClientDataCache {
                 body));
     }
 
+    /** An immutable snapshot; {@link com.otectus.runictome.capability.RunicTomeData#getBooks()} already copies. */
     public static Collection<BookKey> getBooks() {
-        return Collections.unmodifiableCollection(DATA.getBooks());
+        return DATA.getBooks();
+    }
+
+    /**
+     * Unlocked-book count without building a snapshot. The tome screen draws this every frame, so
+     * it must not allocate a copy of the whole library per frame.
+     */
+    public static int size() {
+        return DATA.bookCount();
     }
 
     public static boolean hasBook(BookKey key) {
         return DATA.hasBook(key);
+    }
+
+    public static ItemStack getBookStack(BookKey key) {
+        return DATA.getBookStack(key);
     }
 
     public static boolean isFavorite(BookKey key) {

@@ -2,6 +2,7 @@ package com.otectus.runictome.integration;
 
 import com.otectus.runictome.api.BookKey;
 import com.otectus.runictome.api.GuideSystemAdapter;
+import com.otectus.runictome.impl.ItemRefs;
 import com.otectus.runictome.impl.UseSimulator;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -54,21 +55,37 @@ public class TaggedGuideBookAdapter implements GuideSystemAdapter {
 
     @Override
     public void open(BookKey key, Player clientPlayer) {
+        open(key, clientPlayer, ItemStack.EMPTY);
+    }
+
+    @Override
+    public void open(BookKey key, Player clientPlayer, ItemStack sourceStack) {
         if (!clientPlayer.level().isClientSide) return;
-        Item item = ForgeRegistries.ITEMS.getValue(key.bookId());
-        if (item == null) return;
-        UseSimulator.simulateClientUse(new ItemStack(item), clientPlayer);
+        ItemStack opener = ItemRefs.openerFor(key.bookId(), sourceStack);
+        if (opener.isEmpty()) {
+            clientPlayer.displayClientMessage(
+                    Component.translatable("runictome.unknown_item", key.bookId().toString()), false);
+            return;
+        }
+        UseSimulator.simulateClientUse(opener, clientPlayer);
+    }
+
+    @Override
+    public void openServer(BookKey key, net.minecraft.server.level.ServerPlayer serverPlayer,
+                           ItemStack sourceStack) {
+        ItemStack opener = ItemRefs.openerFor(key.bookId(), sourceStack);
+        if (opener.isEmpty()) return;
+        UseSimulator.simulateServerUse(opener, serverPlayer);
     }
 
     @Override
     public Component displayName(BookKey key) {
-        Item item = ForgeRegistries.ITEMS.getValue(key.bookId());
+        Item item = ItemRefs.resolve(key.bookId());
         return item == null ? Component.literal(key.bookId().toString()) : item.getDescription().copy();
     }
 
     @Override
     public ItemStack displayIcon(BookKey key) {
-        Item item = ForgeRegistries.ITEMS.getValue(key.bookId());
-        return item == null ? ItemStack.EMPTY : new ItemStack(item);
+        return ItemRefs.stackOf(key.bookId());
     }
 }

@@ -232,6 +232,24 @@ public class PatchouliGuideAdapter implements GuideSystemAdapter {
         }
     }
 
+    /**
+     * No-op. Patchouli's book GUI is opened entirely client-side by {@link #open}, and a Patchouli
+     * {@code BookKey}'s {@code bookId} is a <em>book</em> id, not an item registry id. The inherited
+     * default would resolve that id against the item registry and replay an unrelated item's
+     * {@code use()} on the server (e.g. {@code botania:lexicon} is both a book id and a real item),
+     * producing duplicate sounds, statistics, cooldowns and GUI opens.
+     */
+    @Override
+    public void openServer(BookKey key, net.minecraft.server.level.ServerPlayer serverPlayer) {
+        // intentionally empty
+    }
+
+    @Override
+    public void openServer(BookKey key, net.minecraft.server.level.ServerPlayer serverPlayer,
+                           ItemStack sourceStack) {
+        // intentionally empty
+    }
+
     @Override
     public Component displayName(BookKey key) {
         if (AVAILABLE && BOOK_REGISTRY_INSTANCE != null && BOOK_NAME_FIELD != null) {
@@ -256,10 +274,12 @@ public class PatchouliGuideAdapter implements GuideSystemAdapter {
         if (AVAILABLE && GET_BOOK_STACK != null) {
             try {
                 Object result = GET_BOOK_STACK.invoke(API_INSTANCE, key.bookId());
-                if (result instanceof ItemStack s) return s;
-            } catch (Throwable ignored) {
+                // Copy: Patchouli owns the returned stack and the UI must not mutate it.
+                if (result instanceof ItemStack s && !s.isEmpty()) return s.copy();
+            } catch (Throwable t) {
+                RunicTome.LOGGER.warn("Patchouli: getBookStack failed for {}", key, t);
             }
         }
-        return new ItemStack(ForgeRegistries.ITEMS.getValue(GUIDE_BOOK_ITEM));
+        return com.otectus.runictome.impl.ItemRefs.stackOf(GUIDE_BOOK_ITEM);
     }
 }

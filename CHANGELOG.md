@@ -2,6 +2,230 @@
 
 All notable changes to Runic Tome are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-08-13
+
+Two passes ship together: the safety audit (see [`RUNIC-TOME-AUDIT.md`](./RUNIC-TOME-AUDIT.md) for
+the full findings table and evidence), and the follow-up work its roadmap deferred for a product
+decision.
+
+**Upgrading.** Saves, the config schema, datapacks, item tags and the public API (`2`) are unchanged
+and load as-is. **The network protocol moved from `4` to `5`**, so a 0.6.0 client cannot join a
+0.5.x server or vice versa — update both sides together. Two config options gained defaults that
+preserve existing behaviour (`absorbWholeStack = true`, `maxFavoriteTogglesPerSecond = 20`), and
+`showUnlockToast` moved to a new client config with a one-release compatibility gate, so no existing
+setting resets.
+
+### Fixed
+
+- **Unknown item ids were silently accepted everywhere.** Forge's item registry is *defaulted*:
+  `ForgeRegistries.ITEMS.getValue(id)` returns `minecraft:air` for an unregistered id, never `null`.
+  Nine `item == null` guards were therefore dead code. A typo in `extraBookItemIds` or in a datapack
+  `item` field registered a live adapter named "Air" instead of logging a warning; orphaned library
+  entries rendered as "Air"; and `runictome.unknown_item` never appeared. All registry lookups now
+  go through a `containsKey`-based resolver.
+- **The use simulator could corrupt global state shared with every other mod.** `ItemStack.copy()`
+  returns the shared `ItemStack.EMPTY` *singleton* for an empty stack, so replaying an empty opener
+  wrote `{"runictome:virtual":1b}` onto `ItemStack.EMPTY` process-wide. Empty stacks are now rejected
+  before any mutation, and the simulator no longer overwrites the hotbar slot when foreign `use()`
+  replaced its contents — the original stack is re-homed or dropped instead of destroying whatever
+  the other mod put there.
+- **Opening a Patchouli book ran an unrelated item's `use()` on the server.** A Patchouli `BookKey`
+  carries a *book* id, not an item id, but the inherited `openServer` default resolved it against the
+  item registry — so `botania:lexicon` (both a book id and a real item) got a second, server-side
+  activation with its sounds, statistics and cooldowns. `PatchouliGuideAdapter` now overrides
+  `openServer` to a no-op; its `open` was always fully client-side.
+- **A single broken adapter could abort every item pickup.** `identify` had no per-adapter exception
+  isolation, so a third-party, IMC or datapack adapter that threw propagated into the pickup event,
+  the inventory sweep and the craft/smelt handlers. Each adapter is now isolated, logged once, and
+  skipped; if the absorption policy itself throws, identification fails closed and the item is left
+  alone.
+- **`extraBookItemIds`, `absorbUnknownBooks`, `bookKeywords`, `bookBlocklist` and
+  `bookBlocklistMods` now apply on config reload.** They were snapshotted into adapter instances at
+  common setup and silently ignored until a full restart, while the `absorbExclusion*` options next
+  to them already reloaded live. The config-derived adapter set is rebuilt and swapped wholesale, so
+  removing an entry removes its adapter and disabling `absorbUnknownBooks` removes the catch-all.
+- **`SyncBookDefsPacket` pre-sized a list from an untrusted length prefix.** A hostile or corrupted
+  server could make the client allocate a two-billion-entry list before reading a single element.
+  The count and the optional display name are now bounded.
+- **The client library cache is cleared on logout.** It previously survived a disconnect, so joining
+  a different world could briefly show and act on the previous world's library.
+- **Extraction's last-resort fallback is no longer silent.** Materializing a legacy key-only entry by
+  looking its book id up in the item registry only makes sense for item-identity systems; the
+  fallback now requires a genuinely registered item and logs which key triggered it.
+- Capability attachment checks the event's own gathered providers instead of querying the entity
+  mid-gather.
+- The unrecognized-book log cap can no longer be exceeded by concurrent pickups.
+- **A favorite toggle no longer re-serializes the entire library.** Flipping one bit sent back every
+  book key *and* every retained `ItemStack` with its NBT, which a client could repeat without limit —
+  cheap to request, expensive to answer. The server now replies with a single fixed-size packet
+  carrying that one book's authoritative state, and requests are rate limited per player. Rejected
+  requests are still answered with the true state, so the UI's optimistic flip cannot drift out of
+  sync without a full re-sync.
+- **`showUnlockToast` had no effect when set on a dedicated server.** It is a per-player display
+  preference, but it lived in the COMMON spec, which Forge never syncs — so a server operator's value
+  governed nobody and each player had to edit their own common config. It now lives in
+  `runictome-client.toml`.
+- **The exclusion policy and the config-derived adapters are now rebuilt as one server-thread task.**
+  They were two separate publishes from Forge's config-watcher thread, so an absorption landing
+  between them could evaluate the new exclusion lists against the old heuristic snapshot. Each state
+  was individually safe; the pair was not atomic.
+- **The inventory sweep no longer runs every online player on the same tick.** A full server paid the
+  entire cost in one tick of every interval; players are now staggered across it. Each player is
+  still swept exactly once per interval.
+
+### Added
+
+- **`/runictome purge`** — lists library entries that the current global exclusion lists would no
+  longer absorb, matched both by book id and by retained source stack; `/runictome purge confirm`
+  removes them. The `AbsorptionPolicy.findExcluded`/`purgeExcluded` helpers announced in 0.5.1 had no
+  caller, leaving save editing as the only recovery path.
+- **`/runictome debug scan [<namespace>]`** — audits a pack *before* players lose a functional book
+  rather than after. It sweeps every registered item, classifies it through the real absorption path,
+  and reports what the current configuration would absorb (grouped by adapter and by mod) alongside
+  the items an adapter claimed but a global exclusion protected. The full report is written to
+  `runictome-scan.txt` in the server directory; a namespace argument lists one mod's items in chat.
+  Every other diagnostic in the mod explains an item after the fact.
+- **`/runictome unmark [<target>]`** — clears the extraction exemption from the held book so it can be
+  absorbed again. The marker is permanent by design, which previously meant a mistaken extraction was
+  unrecoverable without editing the save.
+- **An optional `<target>` player on every player-scoped subcommand.** All of them called
+  `getPlayerOrException()`, so the command tree was unusable from a server console and an operator
+  had no way to inspect or repair another player's library.
+- **Pagination and localization for command output.** `list` pages at 20 entries with favorites
+  marked, and every message is a translation key rather than a hardcoded literal.
+- **`absorbWholeStack`** — controls what happens to the rest of a stack. Defaults to `true`, the
+  behaviour of every earlier release; set it to `false` to consume one item per newly-unlocked book
+  and leave duplicates physical.
+- **`maxFavoriteTogglesPerSecond`** — per-player cap on favorite-toggle requests. `0` disables it.
+- **Reproducible builds.** The jar manifest embedded `new Date()`, so identical sources produced
+  different jars. Archives now use a fixed file order and no file timestamps, and the timestamp
+  attribute is emitted only from `SOURCE_DATE_EPOCH`.
+- **CI** — `.github/workflows/build.yml` builds and tests every push and pull request, uploading test
+  results and the jar.
+- Optional `patchouli` dependency with `ordering="AFTER"` in `mods.toml`, so Patchouli's
+  `BookRegistry` is populated before the adapter initializes.
+- `IRunicTomeData.setFavorite(key, favorite)` — an idempotent absolute setter, added as a `default`
+  method so no existing implementor breaks and the API version is unchanged. Applying a received
+  state must converge, not flip.
+- 93 new tests (123 total, from 30 before the audit) covering the defaulted-registry behaviour, the
+  `ItemStack.EMPTY` hazard, adapter exception isolation, config-adapter replacement, packet bounds,
+  purge/recovery, the deduplicating absorption contract, both stack-consumption modes, the favorite
+  sync path, the rate limiter, the sweep schedule, the extraction marker, and the pack scan.
+
+### Changed
+
+- `IRunicTomeData.getBooks()` and `getFavorites()` return immutable snapshots rather than live
+  unmodifiable views, so callers can iterate while the library changes. IMC static-book adapters
+  hand out copies of their icons and book list instead of internal state.
+- **Network protocol `4` → `5`.** `SyncFavoritePacket` added a message id; both sides must agree on
+  the id-to-class mapping, so a mismatched peer is refused rather than allowed to misread ids.
+- Absorption is **deduplicating**, and by default destructive to duplicates — a stack of eight
+  identical books stores one and destroys seven. This was previously undocumented (the README claimed
+  absorption was "never destructive"); it is now stated explicitly and is configurable via
+  `absorbWholeStack`. The consumption decision moved out of the three event handlers into one shared
+  policy, so pickup, craft/smelt and the inventory sweep cannot disagree.
+- The extraction exemption marker is documented as surviving everything in normal play, with
+  `/runictome unmark` as the only thing that clears it.
+- README: corrected the `bookBlocklistMods` example (it listed a non-existent `rpglore` default) and
+  the sweep rationale (hoppers cannot insert into a player inventory).
+- Root-level `*.jar` and `*.zip` are gitignored, so `git add -A` can no longer commit dev jars or a
+  multi-hundred-megabyte modpack archive.
+- Removed three unused translation keys; added `runictome.open_no_item`.
+
+## [0.5.2] - 2026-08-06
+
+### Added
+
+- Every library row now has an **Extract** button. Extraction returns one physical copy with its
+  retained NBT/capability data, removes the virtual entry, and drops the item safely when the
+  inventory is full.
+- Extracted stacks carry a private exemption marker so the pickup handler and periodic inventory
+  sweep cannot immediately consume them again.
+- `allowBookExtraction` lets servers disable extraction while leaving it enabled by default.
+
+### Fixed
+
+- Midnight Apocalypse 3.2's `runicskills:leveling_book` is now a built-in hard exclusion. It remains
+  physical, so both XP deposit and XP withdrawal behavior work normally.
+- A full scan of all 261 exact manifest files hard-excludes functional/consumable books from Runic
+  Skills, Legendary Additions, Alex's Caves, Art of Forging, Aylel RPG Drops, CustomNPCs, Dungeons
+  and Combat, Unique Accessories, Cthulhu Fishing, Threateningly Mobs, Celestisynth, D&C x Iron's,
+  Stargate Journey, JSG/Aunis, Valoria, Goety, Goety: Awaken, and Wesley's Roguelike Dungeons while
+  leaving actual read-only guides eligible for absorption.
+- Functional-name detection now rejects empty items named for leveling, XP, skills, summoning,
+  abilities, upgrades, or necromancy before they acquire stateful NBT.
+- Built-in safety exclusions are unioned with the common config, so existing modpacks receive new
+  protections without deleting and regenerating `runictome-common.toml`.
+
+### Changed
+
+- Network protocol is now `4`; clients and servers must both use Runic Tome 0.5.2.
+
+## [0.5.1] — 2026-08-05
+
+A compatibility and absorption-safety release. Runic Tome now preserves the original stack for
+recognized books while applying one global exclusion policy before any adapter can consume an
+item. It combines cross-adapter safety controls with reliable reopening for stateful guide books.
+
+### Added
+
+- **Centralized absorption policy.** `AbsorptionPolicy` runs before every adapter, so global item,
+  namespace, tag, and synthetic-stack exclusions cannot be bypassed by Patchouli, IMC, datapack,
+  tagged, configured, or heuristic integrations.
+- **Global item and namespace exclusions.** `absorbExclusionItems` defaults to
+  `epicfight:skillbook`, and `absorbExclusionMods` defaults to `scriptor`. Unlike the heuristic-only
+  blocklists, these settings prevent every adapter from absorbing a matching item.
+- **Live policy reloads.** Loading or reloading the common config rebuilds immutable exclusion
+  snapshots without requiring a game restart.
+- **Policy maintenance helpers.** The policy can find and purge already-unlocked entries that now
+  match a global item or namespace exclusion.
+- **Expanded `/runictome debug identify`.** Diagnostics now report NBT keys, blocklist-tag state,
+  the global policy decision and reason, the adapter that would claim the item, and the final
+  absorb/no-absorb verdict.
+
+### Fixed
+
+- **Stateful third-party books now reopen correctly.** Absorption retains a one-item copy of the
+  identifying stack, including its NBT, and generic/tagged/item-based adapters replay that exact
+  stack on both logical sides. Previously only the registry id survived, so books whose identity or
+  opening parameters lived in NBT appeared in the list but did nothing when clicked.
+- **Legacy entries can be repaired by reacquiring the book.** If an older save contains a book key
+  without its source stack, absorbing another copy backfills the missing stack and syncs it to the
+  client. Existing key-only saves remain loadable.
+- **Opening a stored book no longer mutates its saved data.** The use simulator works on a defensive
+  one-item copy before adding its internal virtual marker, preserving the retained stack exactly as
+  it was absorbed.
+- **NBT-bearing functional items are no longer guessed to be documentation.** The keyword heuristic
+  rejects stacks with meaningful NBT while allowing ordinary cosmetic/bookkeeping keys such as
+  `Damage`, `RepairCost`, `HideFlags`, and `display`. Explicit and tagged guide integrations remain
+  available for legitimate stateful books.
+
+### Changed
+
+- **Book capability data now includes an optional source stack.** New saves serialize one retained
+  item per unlocked book; old key-only capability data remains valid and loads without migration.
+- **Unlock synchronization now carries the retained stack.** Newly absorbed and repaired books are
+  immediately usable on the client without requiring a relog or dimension change.
+- **Stack-aware adapter hooks.** Generic, tagged, and item-based adapters replay retained stacks on
+  both logical sides, while existing integrations remain source-compatible through default hooks.
+- **Network protocol `3`.** Client and server must both use Runic Tome 0.5.1; mixed versions cannot
+  connect.
+
+### Config
+
+- `absorbExclusionItems` — base item IDs that no adapter may absorb.
+- `absorbExclusionMods` — namespaces whose items no adapter may absorb.
+- `bookBlocklist` and `bookBlocklistMods` remain heuristic-only controls; use the new global
+  exclusions when an item must remain physical regardless of integration priority.
+
+### Upgrade notes
+
+- Replace Runic Tome on both the client and server with 0.5.1.
+- Books absorbed before 0.5.1 cannot have already-lost NBT reconstructed automatically. Acquire
+  another copy of an affected book and allow the tome to absorb it once to repair the existing entry.
+- Review newly generated `absorbExclusionItems` and `absorbExclusionMods` values when carrying
+  forward an older common config.
+
 ## [0.4.0] — 2026-06-19
 
 A targeted classification fix. The keyword catch-all no longer mistakes functional modded gear for

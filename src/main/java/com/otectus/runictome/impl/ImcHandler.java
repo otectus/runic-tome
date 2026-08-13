@@ -77,7 +77,8 @@ public final class ImcHandler {
         private final ConcurrentHashMap<BookKey, ItemStack> icons = new ConcurrentHashMap<>();
 
         void add(BookKey key, ItemStack icon) {
-            icons.put(key, icon);
+            // Copy on the way in: the sending mod keeps a reference to the stack it handed us.
+            icons.put(key, icon == null ? ItemStack.EMPTY : icon.copy());
         }
 
         @Override
@@ -118,12 +119,14 @@ public final class ImcHandler {
 
         @Override
         public java.util.Collection<BookKey> enumerateAll() {
-            return icons.keySet();
+            // Snapshot, not the live keySet: the map is mutable internal state.
+            return java.util.List.copyOf(icons.keySet());
         }
 
         @Override
         public ItemStack displayIcon(BookKey key) {
-            return icons.getOrDefault(key, ItemStack.EMPTY);
+            ItemStack icon = icons.get(key);
+            return icon == null || icon.isEmpty() ? ItemStack.EMPTY : icon.copy();
         }
     }
 }

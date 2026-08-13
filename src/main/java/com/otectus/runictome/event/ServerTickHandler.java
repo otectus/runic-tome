@@ -5,6 +5,7 @@ import com.otectus.runictome.RunicTomeConfig;
 import com.otectus.runictome.api.BookKey;
 import com.otectus.runictome.api.RunicTomeAPI;
 import com.otectus.runictome.api.UnlockResult;
+import com.otectus.runictome.impl.AbsorptionPolicy;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
@@ -26,10 +27,27 @@ public final class ServerTickHandler {
         if (event.getServer() == null) return;
         int interval = RunicTomeConfig.COMMON.sweepIntervalTicks.get();
         if (interval <= 0) interval = 20;
-        if (event.getServer().getTickCount() % interval != 0) return;
+        int tick = event.getServer().getTickCount();
         for (ServerPlayer sp : event.getServer().getPlayerList().getPlayers()) {
-            sweep(sp);
+            if (isDueThisTick(tick, sp.getId(), interval)) {
+                sweep(sp);
+            }
         }
+    }
+
+    /**
+     * Spreads the sweep across the interval instead of running every online player on the same tick.
+     * Each player is still swept exactly once per interval; only the tick it lands on differs, so a
+     * 200-player server does 200/interval sweeps per tick rather than 200 on one tick and none on
+     * the rest. At {@code interval == 1} every player is due every tick, as before.
+     *
+     * <p>Package-private and pure so the distribution can be unit-tested without a server.
+     */
+    static boolean isDueThisTick(int tick, int entityId, int interval) {
+        if (interval <= 1) return true;
+        // Math.floorMod: entity ids are non-negative in practice, but '%' on a negative id would
+        // yield a negative offset and skew the distribution.
+        return Math.floorMod(tick - entityId, interval) == 0;
     }
 
     @SubscribeEvent
@@ -61,10 +79,15 @@ public final class ServerTickHandler {
             Optional<BookKey> maybe = RunicTomeAPI.identify(stack);
             if (maybe.isEmpty()) continue;
             BookKey key = maybe.get();
-            UnlockResult result = RunicTomeAPI.unlockBook(sp, key);
+            UnlockResult result = RunicTomeAPI.unlockBook(sp, key, stack);
             // Leave the item in place if it could not be stored; a later sweep retries.
-            if (!result.isStored()) continue;
-            slots.set(i, ItemStack.EMPTY);
+            int consumed = AbsorptionPolicy.consumptionFor(result, stack.getCount());
+            if (consumed <= 0) continue;
+            if (consumed >= stack.getCount()) {
+                slots.set(i, ItemStack.EMPTY);
+            } else {
+                stack.shrink(consumed);
+            }
             changed = true;
             if (RunicTomeConfig.COMMON.verboseLogging.get()) {
                 RunicTome.LOGGER.info("Swept {} from {}", key, sp.getName().getString());

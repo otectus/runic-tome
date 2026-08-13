@@ -102,17 +102,36 @@ tasks.named('processResources', ProcessResources).configure {
     }
 }
 
+// Reproducible builds: identical sources must produce a byte-identical jar (RT-17). Previously the
+// manifest embedded `new Date()`, evaluated at configuration time, so every build differed and the
+// jar could not be verified against its sources by a third party.
+//
+// SOURCE_DATE_EPOCH is the cross-ecosystem convention for "the timestamp a reproducible build should
+// claim". When a release pipeline sets it the attribute is emitted from that value in UTC; when it
+// is absent (a normal local build) the attribute is omitted entirely rather than filled with the
+// wall clock, because a timestamp nobody can reproduce is worse than no timestamp.
+def sourceDateEpoch = System.getenv('SOURCE_DATE_EPOCH')
+
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
 tasks.named('jar', Jar).configure {
+    def manifestAttributes = [
+            'Specification-Title'   : mod_id,
+            'Specification-Vendor'  : mod_authors,
+            'Specification-Version' : '1',
+            'Implementation-Title'  : mod_id,
+            'Implementation-Version': mod_version,
+            'Implementation-Vendor' : mod_authors,
+    ]
+    if (sourceDateEpoch) {
+        manifestAttributes['Implementation-Timestamp'] = new Date(sourceDateEpoch.toLong() * 1000L)
+                .format("yyyy-MM-dd'T'HH:mm:ssZ", TimeZone.getTimeZone('UTC'))
+    }
     manifest {
-        attributes([
-                'Specification-Title'     : mod_id,
-                'Specification-Vendor'    : mod_authors,
-                'Specification-Version'   : '1',
-                'Implementation-Title'    : mod_id,
-                'Implementation-Version'  : mod_version,
-                'Implementation-Vendor'   : mod_authors,
-                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
-        ])
+        attributes(manifestAttributes)
     }
     finalizedBy 'reobfJar'
 }

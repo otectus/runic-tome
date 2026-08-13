@@ -12,12 +12,12 @@ import net.minecraft.world.item.Item;
  * <ul>
  *   <li>{@link Items#GUIDE_BOOKS} — a positive opt-in: an item tagged here is treated as a guide
  *       book by {@link TaggedGuideBookAdapter} even if the keyword heuristic would reject it.</li>
- *   <li>{@link Items#ABSORB_BLOCKLIST} — a hard opt-out: an item tagged here is never absorbed by
- *       the keyword catch-all or the positive guide-book tag (it overrides {@code GUIDE_BOOKS}).</li>
+ *   <li>{@link Items#ABSORB_BLOCKLIST} — a global hard opt-out: an item tagged here is never
+ *       absorbed by any adapter (it overrides {@code GUIDE_BOOKS}).</li>
  * </ul>
  *
- * <p>Both tags gate only the tagged and heuristic adapters; explicit adapters (Patchouli, Tinkers,
- * IMC, datapack-defined books) intentionally remain unaffected.
+ * <p>The positive tag affects only the tagged adapter. The blocklist is enforced centrally before
+ * adapter resolution, including for Patchouli, Tinkers, IMC, and datapack-defined books.
  */
 public final class ModTags {
 

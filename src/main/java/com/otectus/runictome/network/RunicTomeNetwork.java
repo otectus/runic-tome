@@ -10,7 +10,12 @@ import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class RunicTomeNetwork {
 
-    private static final String PROTOCOL_VERSION = "2";
+    /**
+     * Bumped 4 -> 5 in 0.6.0 by {@link SyncFavoritePacket}, which added a message id. Both sides
+     * must agree on the id-to-class mapping, so a 0.5.x peer is correctly refused rather than
+     * allowed to connect and misread ids 5 and 6.
+     */
+    private static final String PROTOCOL_VERSION = "5";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.ChannelBuilder
             .named(new ResourceLocation(RunicTome.MOD_ID, "main"))
@@ -48,10 +53,24 @@ public final class RunicTomeNetwork {
                 .consumerMainThread(ToggleFavoritePacket::handle)
                 .add();
 
+        CHANNEL.messageBuilder(ExtractBookPacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(ExtractBookPacket::encode)
+                .decoder(ExtractBookPacket::decode)
+                .consumerMainThread(ExtractBookPacket::handle)
+                .add();
+
         CHANNEL.messageBuilder(SyncBookDefsPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
                 .encoder(SyncBookDefsPacket::encode)
                 .decoder(SyncBookDefsPacket::decode)
                 .consumerMainThread(SyncBookDefsPacket::handle)
+                .add();
+
+        // Appended last so the ids of every pre-existing packet are unchanged; the protocol bump
+        // is what keeps a mismatched peer out.
+        CHANNEL.messageBuilder(SyncFavoritePacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(SyncFavoritePacket::encode)
+                .decoder(SyncFavoritePacket::decode)
+                .consumerMainThread(SyncFavoritePacket::handle)
                 .add();
     }
 

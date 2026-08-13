@@ -4,6 +4,8 @@ import com.otectus.runictome.RunicTome;
 import com.otectus.runictome.RunicTomeConfig;
 import com.otectus.runictome.api.GuideSystemAdapter;
 import com.otectus.runictome.api.RunicTomeAPI;
+import com.otectus.runictome.impl.AdapterRegistry;
+import com.otectus.runictome.impl.ItemRefs;
 import com.otectus.runictome.integration.patchouli.PatchouliIntegration;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -25,6 +27,17 @@ public final class ModIntegrations {
 
     private ModIntegrations() {}
 
+    /**
+     * Set once {@link #setupAll()} has run. Before that point the item registry may not be fully
+     * populated and the built-in adapters are not registered yet, so a config load must not try to
+     * rebuild the config-derived adapter set.
+     */
+    private static volatile boolean ready = false;
+
+    public static boolean isReady() {
+        return ready;
+    }
+
     public static void setupAll() {
         PatchouliIntegration.setup();
         registerTinkers();
@@ -32,9 +45,9 @@ public final class ModIntegrations {
         registerMca();
         registerImmersiveEngineering();
         registerModonomicon();
-        registerConfigBooks();
         registerTaggedGuideBooks();
-        registerHeuristic();
+        applyConfigAdapters();
+        ready = true;
 
         var adapters = RunicTomeAPI.allAdapters();
         String ids = adapters.stream()
@@ -55,7 +68,7 @@ public final class ModIntegrations {
 
     private static void registerTinkersBook(String path, String displayName) {
         ResourceLocation itemId = new ResourceLocation("tconstruct", path);
-        if (ForgeRegistries.ITEMS.getValue(itemId) == null) {
+        if (!ItemRefs.exists(itemId)) {
             RunicTome.LOGGER.debug("Tinkers book item missing, skipping: {}", itemId);
             return;
         }
@@ -115,7 +128,7 @@ public final class ModIntegrations {
 
     private static boolean registerSimpleBook(String namespace, String path, String systemPrefix) {
         ResourceLocation itemId = new ResourceLocation(namespace, path);
-        var item = ForgeRegistries.ITEMS.getValue(itemId);
+        var item = ItemRefs.resolve(itemId);
         if (item == null) {
             RunicTome.LOGGER.debug("{} book item missing, skipping: {}", systemPrefix, itemId);
             return false;
@@ -135,48 +148,73 @@ public final class ModIntegrations {
         RunicTome.LOGGER.info("Runic Tome: #runictome:guide_books tag adapter registered");
     }
 
-    private static void registerHeuristic() {
+    /**
+     * Rebuilds every adapter derived from the common config — the {@code extraBookItemIds} entries
+     * and the keyword catch-all — and swaps the whole set into the registry atomically.
+     *
+     * <p>Called from {@link #setupAll()} and again on every common-config load/reload, so those five
+     * options behave like the {@code absorbExclusion*} options next to them instead of silently
+     * requiring a restart. Because the set is replaced wholesale, turning {@code absorbUnknownBooks}
+     * off removes the catch-all and deleting an {@code extraBookItemIds} entry removes its adapter.
+     */
+    public static void applyConfigAdapters() {
+        List<GuideSystemAdapter> built = new java.util.ArrayList<>();
+        built.addAll(buildConfigBookAdapters());
+        buildHeuristicAdapter().ifPresent(built::add);
+        AdapterRegistry.get().setConfigAdapters(built);
+    }
+
+    private static java.util.Optional<GuideSystemAdapter> buildHeuristicAdapter() {
         if (!RunicTomeConfig.COMMON.absorbUnknownBooks.get()) {
             RunicTome.LOGGER.info("Runic Tome: keyword catch-all disabled (absorbUnknownBooks=false)");
-            return;
+            return java.util.Optional.empty();
         }
         List<String> keywords = RunicTomeConfig.COMMON.bookKeywords.get().stream()
                 .map(s -> s.toLowerCase(Locale.ROOT))
+                .filter(s -> !s.isBlank())
                 .collect(Collectors.toList());
         Set<ResourceLocation> blocklist = new HashSet<>();
         for (String raw : RunicTomeConfig.COMMON.bookBlocklist.get()) {
             ResourceLocation rl = ResourceLocation.tryParse(raw);
-            if (rl != null) blocklist.add(rl);
+            if (rl == null) {
+                RunicTome.LOGGER.warn("bookBlocklist: invalid ResourceLocation '{}', skipping", raw);
+            } else {
+                blocklist.add(rl);
+            }
         }
         Set<String> blockedNamespaces = new HashSet<>(RunicTomeConfig.COMMON.bookBlocklistMods.get());
-        var adapter = new HeuristicBookAdapter(
-                new ResourceLocation(RunicTome.MOD_ID, "heuristic"), keywords, blocklist, blockedNamespaces);
-        RunicTomeAPI.registerAdapter(adapter);
+        blockedNamespaces.removeIf(s -> s == null || s.isBlank());
         RunicTome.LOGGER.info("Runic Tome: keyword catch-all active ({} keyword(s), {} item(s) + {} mod(s) blocked)",
                 keywords.size(), blocklist.size(), blockedNamespaces.size());
+        return java.util.Optional.of(new HeuristicBookAdapter(
+                new ResourceLocation(RunicTome.MOD_ID, AdapterRegistry.HEURISTIC_PATH),
+                keywords, blocklist, blockedNamespaces));
     }
 
-    private static void registerConfigBooks() {
+    private static List<GuideSystemAdapter> buildConfigBookAdapters() {
+        List<GuideSystemAdapter> result = new java.util.ArrayList<>();
         List<? extends String> entries = RunicTomeConfig.COMMON.extraBookItemIds.get();
-        if (entries == null || entries.isEmpty()) return;
+        if (entries == null || entries.isEmpty()) return result;
         for (String raw : entries) {
             ResourceLocation itemId = ResourceLocation.tryParse(raw);
             if (itemId == null) {
                 RunicTome.LOGGER.warn("extraBookItemIds: invalid ResourceLocation '{}', skipping", raw);
                 continue;
             }
-            var item = ForgeRegistries.ITEMS.getValue(itemId);
+            // ItemRefs, not getValue(): ForgeRegistries.ITEMS returns minecraft:air for an unknown
+            // id, so a plain null check would silently register an adapter named "Air".
+            var item = ItemRefs.resolve(itemId);
             if (item == null) {
                 RunicTome.LOGGER.warn("extraBookItemIds: item '{}' is not registered, skipping", itemId);
                 continue;
             }
             String path = itemId.getNamespace() + "/" + itemId.getPath();
-            GuideSystemAdapter adapter = new ItemBasedAdapter(
-                    new ResourceLocation(RunicTome.MOD_ID, "config/" + path),
+            result.add(new ItemBasedAdapter(
+                    new ResourceLocation(RunicTome.MOD_ID, AdapterRegistry.CONFIG_PREFIX + path),
                     itemId,
-                    item.getDescription().copy());
-            RunicTomeAPI.registerAdapter(adapter);
+                    item.getDescription().copy()));
             RunicTome.LOGGER.info("Registered config-defined book adapter for {}", itemId);
         }
+        return result;
     }
 }

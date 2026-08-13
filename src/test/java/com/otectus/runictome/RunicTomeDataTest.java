@@ -7,6 +7,8 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.Bootstrap;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -68,6 +70,39 @@ class RunicTomeDataTest {
 
         assertTrue(copy.hasReceivedTome());
         assertIterableEquals(expected, new ArrayList<>(copy.getBooks()));
+    }
+
+    @Test
+    void retainedStackNbtSurvivesRoundTrip() {
+        RunicTomeData data = new RunicTomeData();
+        BookKey key = patchouli("example", "stateful_guide");
+        ItemStack source = new ItemStack(Items.WRITTEN_BOOK, 4);
+        source.getOrCreateTag().putString("example:book_id", "chapter_two");
+
+        assertTrue(data.unlockBook(key, source));
+        CompoundTag saved = data.serializeNBT();
+
+        RunicTomeData copy = new RunicTomeData();
+        copy.deserializeNBT(saved);
+        ItemStack retained = copy.getBookStack(key);
+
+        assertEquals(1, retained.getCount());
+        assertEquals(Items.WRITTEN_BOOK, retained.getItem());
+        assertEquals("chapter_two", retained.getTag().getString("example:book_id"));
+    }
+
+    @Test
+    void reacquiringLegacyEntryBackfillsMissingStack() {
+        RunicTomeData data = new RunicTomeData();
+        BookKey key = patchouli("example", "legacy_guide");
+        assertTrue(data.unlockBook(key));
+        assertTrue(data.getBookStack(key).isEmpty());
+
+        ItemStack replacement = new ItemStack(Items.WRITTEN_BOOK);
+        replacement.getOrCreateTag().putBoolean("opens", true);
+        assertFalse(data.unlockBook(key, replacement));
+
+        assertTrue(data.getBookStack(key).getTag().getBoolean("opens"));
     }
 
     @Test

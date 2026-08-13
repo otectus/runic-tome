@@ -3,6 +3,8 @@ package com.otectus.runictome.network;
 import com.otectus.runictome.api.BookKey;
 import com.otectus.runictome.api.GuideSystemAdapter;
 import com.otectus.runictome.api.RunicTomeAPI;
+import com.otectus.runictome.capability.RunicTomeCapabilities;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -38,8 +40,10 @@ public record OpenBookPacket(BookKey key) {
             if (player == null) return;
             // Only open a book the player has actually unlocked.
             if (!RunicTomeAPI.isBookUnlocked(player, msg.key)) return;
+            ItemStack sourceStack = player.getCapability(RunicTomeCapabilities.PLAYER_DATA)
+                    .map(data -> data.getBookStack(msg.key)).orElse(ItemStack.EMPTY);
             Optional<GuideSystemAdapter> adapter = RunicTomeAPI.adapterFor(msg.key.systemId());
-            adapter.ifPresent(a -> a.openServer(msg.key, player));
+            adapter.ifPresent(a -> a.openServer(msg.key, player, sourceStack));
         });
     }
 }

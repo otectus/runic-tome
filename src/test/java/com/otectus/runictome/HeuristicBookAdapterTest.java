@@ -67,6 +67,16 @@ class HeuristicBookAdapterTest {
     }
 
     @Test
+    void mutableBookNamesAreRejectedEvenBeforeTheyGainNbt() {
+        for (String path : List.of("leveling_book", "experience_tome", "xp_book",
+                "summon_book", "necromancer_grimoire", "skill_book")) {
+            Optional<BookKey> result = adapter().classify(
+                    new ResourceLocation("examplemod", path), plainStack());
+            assertTrue(result.isEmpty(), path);
+        }
+    }
+
+    @Test
     void itemBlocklistIsRejected() {
         Optional<BookKey> result = adapter().classify(
                 new ResourceLocation("examplemod", "blocked_tome"), plainStack());
@@ -80,5 +90,23 @@ class HeuristicBookAdapterTest {
         Optional<BookKey> result = adapter().classify(
                 new ResourceLocation("examplemod", "guide"), enchanted);
         assertTrue(result.isEmpty(), "An enchanted (functional) stack should be rejected even with a keyword id");
+    }
+
+    @Test
+    void meaningfulNbtKeywordItemIsRejected() {
+        ItemStack stateful = plainStack();
+        stateful.getOrCreateTag().putString("spell_data", "fireball");
+        Optional<BookKey> result = adapter().classify(
+                new ResourceLocation("examplemod", "ancient_tome"), stateful);
+        assertTrue(result.isEmpty(), "An NBT-bearing functional item must not be guessed to be documentation");
+    }
+
+    @Test
+    void cosmeticNbtDoesNotBlockGuide() {
+        ItemStack cosmetic = plainStack();
+        cosmetic.getOrCreateTag().putInt("HideFlags", 1);
+        Optional<BookKey> result = adapter().classify(
+                new ResourceLocation("examplemod", "field_guide"), cosmetic);
+        assertTrue(result.isPresent(), "Known benign NBT should not suppress a documentation match");
     }
 }

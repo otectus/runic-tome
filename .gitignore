@@ -16,6 +16,7 @@ out
 # gradle
 build
 .gradle
+.tooling
 
 # other
 eclipse
@@ -30,3 +31,8 @@ forge*changelog.txt
 # Forge/MC runtime output
 logs
 src/generated
+
+# Loose build outputs and modpack archives kept beside the project.
+# Without these, `git add -A` commits dev jars and multi-hundred-MB pack zips.
+/*.jar
+/*.zip

@@ -31,15 +31,32 @@ public interface GuideSystemAdapter {
     void open(BookKey key, Player clientPlayer);
 
     /**
+     * Stack-aware opening hook. The default preserves source compatibility for existing adapters;
+     * generic adapters override it to replay the retained, NBT-bearing source stack.
+     */
+    default void open(BookKey key, Player clientPlayer, ItemStack sourceStack) {
+        open(key, clientPlayer);
+    }
+
+    /**
      * Called on the logical server when the player opens a book from the tome. The default
      * replays the book item's {@code use()} server-side, which covers books that open their
      * GUI by sending their own server-to-client packet (e.g. Minecraft Comes Alive). Adapters
      * whose {@link #open} already handles everything client-side should override this to a no-op.
      */
     default void openServer(BookKey key, ServerPlayer serverPlayer) {
-        var item = ForgeRegistries.ITEMS.getValue(key.bookId());
-        if (item == null) return;
-        com.otectus.runictome.impl.UseSimulator.simulateServerUse(new ItemStack(item), serverPlayer);
+        // Resolve through ItemRefs: ForgeRegistries.ITEMS is a defaulted registry and returns
+        // minecraft:air (not null) for an unregistered id, which would otherwise hand an empty
+        // stack to the use simulator. Adapters whose bookId is not an item registry id (e.g.
+        // Patchouli, whose bookId is a book id) must override this to a no-op.
+        ItemStack opener = com.otectus.runictome.impl.ItemRefs.stackOf(key.bookId());
+        if (opener.isEmpty()) return;
+        com.otectus.runictome.impl.UseSimulator.simulateServerUse(opener, serverPlayer);
+    }
+
+    /** Server-side counterpart of the stack-aware client hook. */
+    default void openServer(BookKey key, ServerPlayer serverPlayer, ItemStack sourceStack) {
+        openServer(key, serverPlayer);
     }
 
     default boolean supportsBulkEnumeration() {

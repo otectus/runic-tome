@@ -4,6 +4,7 @@ import com.otectus.runictome.api.BookKey;
 import com.otectus.runictome.api.GuideSystemAdapter;
 import com.otectus.runictome.api.RunicTomeAPI;
 import com.otectus.runictome.client.ClientDataCache;
+import com.otectus.runictome.network.ExtractBookPacket;
 import com.otectus.runictome.network.OpenBookPacket;
 import com.otectus.runictome.network.RunicTomeNetwork;
 import com.otectus.runictome.network.ToggleFavoritePacket;
@@ -28,14 +29,16 @@ import java.util.Optional;
 
 /**
  * Searchable, scrollable Runic Tome UI. Lists unlocked guide books with their item icon and
- * display name, favorites pinned to the top. Left-click opens a book; right-click toggles its
- * favorite flag. Uses {@link ObjectSelectionList} so scrolling and selection are handled by the
+ * display name, favorites pinned to the top. Left-click opens a book, right-click toggles its
+ * favorite flag, and each row has a button that extracts the physical book. Uses
+ * {@link ObjectSelectionList} so scrolling and selection are handled by the
  * vanilla widget rather than hand-rolled paging.
  */
 public class RunicTomeScreen extends Screen {
 
     private static final int LIST_WIDTH = 240;
     private static final int ROW_HEIGHT = 22;
+    private static final int EXTRACT_WIDTH = 54;
 
     private EditBox searchBox;
     private BookList list;
@@ -83,7 +86,7 @@ public class RunicTomeScreen extends Screen {
 
         // Title + unlocked count header.
         graphics.drawCenteredString(this.font, this.title, this.width / 2, 6, 0xFFFFFF);
-        int total = ClientDataCache.getBooks().size();
+        int total = ClientDataCache.size();
         Component count = Component.translatable("screen.runictome.count", total)
                 .withStyle(ChatFormatting.GRAY);
         graphics.drawCenteredString(this.font, count, this.width / 2, this.height - 14, 0xA0A0A0);
@@ -108,7 +111,7 @@ public class RunicTomeScreen extends Screen {
         // Tell the server first so adapters can run server-side open logic, then open client-side.
         RunicTomeNetwork.sendToServer(new OpenBookPacket(key));
         try {
-            adapter.get().open(key, this.minecraft.player);
+            adapter.get().open(key, this.minecraft.player, ClientDataCache.getBookStack(key));
         } catch (Throwable t) {
             this.minecraft.player.displayClientMessage(
                     Component.translatable("runictome.open_failed", key.bookId().toString()), false);
@@ -120,6 +123,13 @@ public class RunicTomeScreen extends Screen {
         ClientDataCache.toggleFavoriteOptimistic(key);
         RunicTomeNetwork.sendToServer(new ToggleFavoritePacket(key));
         rebuildRows();
+    }
+
+    private void extractEntry(BookKey key) {
+        RunicTomeNetwork.sendToServer(new ExtractBookPacket(key));
+        // The server immediately sends an authoritative capability sync. Closing avoids leaving a
+        // stale row clickable during that round trip; reopening shows the updated library.
+        onClose();
     }
 
     @Override
@@ -177,6 +187,9 @@ public class RunicTomeScreen extends Screen {
             private final BookKey key;
             private final Component name;
             private final ItemStack icon;
+            private int extractX;
+            private int extractY;
+            private int extractHeight;
 
             Row(BookKey key, Component name, ItemStack icon) {
                 this.key = key;
@@ -202,7 +215,21 @@ public class RunicTomeScreen extends Screen {
                 if (hovering) {
                     label = this.name.copy().withStyle(ChatFormatting.YELLOW);
                 }
-                String text = mc.font.plainSubstrByWidth(label.getString(), width - (textX - left) - 8);
+                this.extractX = left + width - EXTRACT_WIDTH - 3;
+                this.extractY = top + 2;
+                this.extractHeight = height - 4;
+                int buttonColor = mouseX >= this.extractX && mouseX < this.extractX + EXTRACT_WIDTH
+                        && mouseY >= this.extractY && mouseY < this.extractY + this.extractHeight
+                        ? 0xFF6B5435 : 0xFF453824;
+                graphics.fill(this.extractX, this.extractY,
+                        this.extractX + EXTRACT_WIDTH, this.extractY + this.extractHeight, 0xFFA08050);
+                graphics.fill(this.extractX + 1, this.extractY + 1,
+                        this.extractX + EXTRACT_WIDTH - 1, this.extractY + this.extractHeight - 1, buttonColor);
+                graphics.drawCenteredString(mc.font, Component.translatable("gui.runictome.extract"),
+                        this.extractX + EXTRACT_WIDTH / 2, top + (height - 8) / 2, 0xFFFFFF);
+
+                int availableTextWidth = Math.max(0, this.extractX - textX - 5);
+                String text = mc.font.plainSubstrByWidth(label.getString(), availableTextWidth);
                 if (!text.equals(label.getString())) {
                     text = text + "...";
                 }
@@ -212,6 +239,11 @@ public class RunicTomeScreen extends Screen {
 
             @Override
             public boolean mouseClicked(double mouseX, double mouseY, int button) {
+                if (button == 0 && mouseX >= this.extractX && mouseX < this.extractX + EXTRACT_WIDTH
+                        && mouseY >= this.extractY && mouseY < this.extractY + this.extractHeight) {
+                    extractEntry(this.key);
+                    return true;
+                }
                 if (button == 1) { // right-click toggles favorite
                     toggleFavorite(this.key);
                     return true;

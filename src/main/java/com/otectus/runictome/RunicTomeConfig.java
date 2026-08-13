@@ -6,16 +6,79 @@ import java.util.List;
 
 public final class RunicTomeConfig {
 
+    public static final List<String> DEFAULT_ABSORB_EXCLUSION_ITEMS =
+            List.of(
+                    "epicfight:skillbook",
+                    "runicskills:leveling_book",
+                    "legendary_additions:experience_book",
+                    "alexscaves:cave_codex",
+                    "art_of_forging:esoteric_codex",
+                    "aylelrpgdrops:mark_grimoire",
+                    "aylelrpgdrops:recall_grimoire",
+                    "customnpcs:nbt_book",
+                    "dungeons_and_combat:combat_style_manual",
+                    "uniqueaccessories:ninjutsu_manual",
+                    "cthulhufishing:cthulhu_grimoire",
+                    "threateningly_mobs:skeleton_book",
+                    "celestisynth:celestial_spell_book",
+                    "dacxirons:divine_manuscript_spell_book",
+                    "sgjourney:archeologist_notebook",
+                    "jsg:notebook",
+                    "jsg:page_notebook_empty",
+                    "jsg:page_notebook_filled",
+                    "valoria:summon_book",
+                    "valoria:crystal_summon_book",
+                    "valoria:necromancer_grimoire",
+                    "goety:infernal_tome",
+                    "goety:grimoire_of_goodwill",
+                    "goety:grimoire_of_grounding",
+                    "goety:grimoire_of_grudges");
+    public static final List<String> DEFAULT_ABSORB_EXCLUSION_MODS =
+            List.of("scriptor", "goetyawaken", "wrd");
+
     public static final ForgeConfigSpec COMMON_SPEC;
     public static final Common COMMON;
+
+    public static final ForgeConfigSpec CLIENT_SPEC;
+    public static final Client CLIENT;
 
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
         COMMON = new Common(b);
         COMMON_SPEC = b.build();
+
+        ForgeConfigSpec.Builder cb = new ForgeConfigSpec.Builder();
+        CLIENT = new Client(cb);
+        CLIENT_SPEC = cb.build();
     }
 
     private RunicTomeConfig() {}
+
+    /**
+     * Whether the unlock toast should be shown, resolved across both specs.
+     *
+     * <p>{@code showUnlockToast} is a purely client-side preference that historically lived in the
+     * COMMON spec, where a dedicated server's copy of the file has no effect on any player: Forge
+     * does not sync COMMON configs. It now lives in {@code runictome-client.toml}.
+     *
+     * <p>The old COMMON option is retained as an AND-gate for one deprecation cycle so that a player
+     * who had already turned toasts off does not silently get them back on update. Both default to
+     * {@code true}, so a fresh install is governed by the client option alone. The COMMON option is
+     * scheduled for removal; until then, an explicit {@code false} in either file wins.
+     */
+    public static boolean showUnlockToast() {
+        boolean client = !CLIENT_SPEC.isLoaded() || CLIENT.showUnlockToast.get();
+        boolean legacyCommon = !COMMON_SPEC.isLoaded() || COMMON.showUnlockToast.get();
+        return client && legacyCommon;
+    }
+
+    /**
+     * Whether absorbing a book consumes the entire source stack. Tolerates an unloaded spec so unit
+     * tests and early-startup callers see the documented default.
+     */
+    public static boolean absorbWholeStack() {
+        return !COMMON_SPEC.isLoaded() || COMMON.absorbWholeStack.get();
+    }
 
     public static final class Common {
         public final ForgeConfigSpec.BooleanValue absorbOnPickup;
@@ -26,8 +89,13 @@ public final class RunicTomeConfig {
         public final ForgeConfigSpec.ConfigValue<List<? extends String>> bookKeywords;
         public final ForgeConfigSpec.ConfigValue<List<? extends String>> bookBlocklist;
         public final ForgeConfigSpec.ConfigValue<List<? extends String>> bookBlocklistMods;
+        public final ForgeConfigSpec.ConfigValue<List<? extends String>> absorbExclusionItems;
+        public final ForgeConfigSpec.ConfigValue<List<? extends String>> absorbExclusionMods;
         public final ForgeConfigSpec.BooleanValue showUnlockToast;
+        public final ForgeConfigSpec.BooleanValue allowBookExtraction;
+        public final ForgeConfigSpec.BooleanValue absorbWholeStack;
         public final ForgeConfigSpec.IntValue sweepIntervalTicks;
+        public final ForgeConfigSpec.IntValue maxFavoriteTogglesPerSecond;
         public final ForgeConfigSpec.BooleanValue grantTomeOnFirstJoin;
 
         Common(ForgeConfigSpec.Builder b) {
@@ -36,6 +104,17 @@ public final class RunicTomeConfig {
                     .define("absorbOnPickup", true);
             absorbOnCraft = b.comment("Absorb guide books produced by crafting or smelting.")
                     .define("absorbOnCraft", true);
+            absorbWholeStack = b.comment(
+                    "Whether absorbing a book consumes the ENTIRE source stack (default, and the",
+                    "behavior of every release before 0.6.0). The Runic Tome only ever stores one",
+                    "copy of a book, so with this enabled a stack of 8 identical manuals yields one",
+                    "extractable copy and the other 7 are destroyed; picking up a book you already",
+                    "own destroys it outright.",
+                    "Set to false to consume exactly ONE item per newly-unlocked book and leave the",
+                    "rest physical. With false, a duplicate of a book you already own is never",
+                    "consumed at all -- extras stay in your inventory, on the ground, or in the",
+                    "crafting output.")
+                    .define("absorbWholeStack", true);
             b.pop();
 
             b.push("integrations");
@@ -64,7 +143,9 @@ public final class RunicTomeConfig {
                             o -> o instanceof String);
 
             bookBlocklist = b.comment(
-                    "Item IDs never absorbed by the keyword catch-all (vanilla and functional books).",
+                    "HEURISTIC-ONLY: item IDs the keyword catch-all skips (vanilla and functional books).",
+                    "This does NOT stop an explicit adapter (Patchouli, config, IMC, datapack) from absorbing",
+                    "the item -- for a hard, cross-adapter block use absorbExclusionItems instead.",
                     "Use \"modid:item_path\" form. Block items and this mod's items are excluded already.")
                     .defineListAllowEmpty("bookBlocklist",
                             List.of("minecraft:book", "minecraft:writable_book", "minecraft:written_book",
@@ -72,29 +153,64 @@ public final class RunicTomeConfig {
                             o -> o instanceof String s && s.contains(":"));
 
             bookBlocklistMods = b.comment(
-                    "Mod IDs whose items are never absorbed by the keyword catch-all. Use this for",
-                    "mods whose 'book'/'tome' items are functional gear rather than documentation.",
-                    "Defaults exclude Iron's Spells 'n Spellbooks (spellbooks), Ars Nouveau",
-                    "(spell books / caster tomes), and Scriptor (functional '*tome*'/'*book*' items).",
-                    "Note: explicitly-supported documentation books these mods ship via Patchouli,",
-                    "IMC, datapacks, or the positive #runictome:guide_books tag are still absorbed,",
-                    "because those adapters run before this catch-all (e.g. Ars Nouveau's Worn Notebook).")
+                    "HEURISTIC-ONLY: mod IDs the keyword catch-all skips. Use this for mods whose",
+                    "'book'/'tome' items are functional gear rather than documentation. This does NOT",
+                    "stop an explicit adapter from absorbing them -- for a hard, cross-adapter block use",
+                    "absorbExclusionMods instead. Defaults exclude Iron's Spells 'n Spellbooks, Ars Nouveau,",
+                    "and Scriptor. Note: documentation books these mods ship via Patchouli, IMC, datapacks,",
+                    "or the positive #runictome:guide_books tag are still absorbed, because those adapters",
+                    "run before this catch-all (e.g. Ars Nouveau's Worn Notebook).")
                     .defineListAllowEmpty("bookBlocklistMods",
                             List.of("irons_spellbooks", "ars_nouveau", "scriptor"),
+                            o -> o instanceof String);
+
+            absorbExclusionItems = b.comment(
+                    "EXTRA GLOBAL HARD EXCLUSIONS: item IDs NEVER absorbed by ANY adapter (Patchouli, explicit,",
+                    "config, datapack, IMC, tagged, and the heuristic all honor this). Matches the base item",
+                    "id, so every NBT/data variant of a shared item is excluded. Built-in safety exclusions",
+                    "for known functional books are always active even when an older config omits them.",
+                    "Use \"modid:item_path\" form. Malformed IDs are logged and skipped.")
+                    .defineListAllowEmpty("absorbExclusionItems", DEFAULT_ABSORB_EXCLUSION_ITEMS,
+                            o -> o instanceof String s && s.contains(":"));
+
+            absorbExclusionMods = b.comment(
+                    "EXTRA GLOBAL HARD EXCLUSIONS: namespaces NEVER absorbed by ANY adapter. Use for mods whose",
+                    "'book'/'tome' items are functional/stateful gear that must remain physical.",
+                    "Built-in safety namespaces are always active even when an older config omits them.",
+                    "Malformed namespaces are logged and skipped.")
+                    .defineListAllowEmpty("absorbExclusionMods", DEFAULT_ABSORB_EXCLUSION_MODS,
                             o -> o instanceof String);
             b.pop();
 
             b.push("ui");
-            showUnlockToast = b.comment("Show a toast notification when a new book is absorbed.")
+            showUnlockToast = b.comment(
+                    "DEPRECATED -- moved to runictome-client.toml (client.showUnlockToast).",
+                    "This is a per-player display preference, and Forge does not sync COMMON configs,",
+                    "so setting it on a dedicated server never affected any player. It is still read",
+                    "for one release so an existing 'false' is not silently reset: toasts appear only",
+                    "when BOTH this and the client option are true. Set the client option instead;",
+                    "this key will be removed in a future release.")
                     .define("showUnlockToast", true);
+            allowBookExtraction = b.comment(
+                    "Allow players to extract an unlocked book back into a physical item.",
+                    "Extracted stacks retain their data and are marked so inventory sweeps do not re-absorb them.")
+                    .define("allowBookExtraction", true);
             b.pop();
 
             b.push("performance");
             sweepIntervalTicks = b.comment(
                     "How often (in server ticks) to sweep player inventories for unabsorbed books.",
                     "Pickup, craft, and container-close events are handled separately and are unaffected.",
-                    "20 = once per second. Set to 1 to restore legacy per-tick behavior.")
+                    "20 = once per second. Set to 1 to restore legacy per-tick behavior.",
+                    "Players are staggered across the interval, so each player is still swept once per",
+                    "interval but the cost is spread over it rather than landing on a single tick.")
                     .defineInRange("sweepIntervalTicks", 20, 1, 1200);
+            maxFavoriteTogglesPerSecond = b.comment(
+                    "Server-side cap on how many favorite toggles one player may apply per second.",
+                    "Requests over the cap are rejected and answered with the authoritative state, so a",
+                    "client cannot use them to force repeated work. Raise only if legitimate rapid",
+                    "clicking is being rejected; 0 disables the limit.")
+                    .defineInRange("maxFavoriteTogglesPerSecond", 20, 0, 200);
             b.pop();
 
             b.push("items");
@@ -107,6 +223,25 @@ public final class RunicTomeConfig {
             b.push("debug");
             verboseLogging = b.comment("Extra logging for capability sync and adapter resolution.")
                     .define("verboseLogging", false);
+            b.pop();
+        }
+    }
+
+    /**
+     * Per-player display preferences. These belong in a CLIENT spec because Forge writes it per
+     * installation and never syncs it: a value here governs only the player who set it, which is
+     * exactly what a display preference should do.
+     */
+    public static final class Client {
+        public final ForgeConfigSpec.BooleanValue showUnlockToast;
+
+        Client(ForgeConfigSpec.Builder b) {
+            b.push("ui");
+            showUnlockToast = b.comment(
+                    "Show a toast notification when a new book is absorbed.",
+                    "Replaces the deprecated common-config option of the same name. While that option",
+                    "still exists, a 'false' in either file suppresses the toast.")
+                    .define("showUnlockToast", true);
             b.pop();
         }
     }

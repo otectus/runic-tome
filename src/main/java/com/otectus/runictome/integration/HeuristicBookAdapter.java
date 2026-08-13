@@ -4,6 +4,7 @@ import com.otectus.runictome.RunicTome;
 import com.otectus.runictome.RunicTomeConfig;
 import com.otectus.runictome.api.BookKey;
 import com.otectus.runictome.api.GuideSystemAdapter;
+import com.otectus.runictome.impl.ItemRefs;
 import com.otectus.runictome.impl.UseSimulator;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -33,7 +34,13 @@ public class HeuristicBookAdapter implements GuideSystemAdapter {
 
     /** Path substrings that mark an item as functional gear rather than documentation. */
     private static final List<String> FUNCTIONAL_MARKERS =
-            List.of("spell", "scroll", "caster", "focus", "rune", "wand");
+            List.of("spell", "scroll", "caster", "focus", "rune", "wand", "skill",
+                    "level", "experience", "xp", "summon", "ability", "upgrade",
+                    "necromancer");
+
+    /** Cosmetic/vanilla bookkeeping that does not normally distinguish a functional item. */
+    private static final Set<String> BENIGN_NBT_KEYS =
+            Set.of("Damage", "RepairCost", "HideFlags", "display", UseSimulator.VIRTUAL_TAG);
 
     private final ResourceLocation systemId;
     private final List<String> keywords;
@@ -118,7 +125,16 @@ public class HeuristicBookAdapter implements GuideSystemAdapter {
         for (String marker : FUNCTIONAL_MARKERS) {
             if (path.contains(marker)) return true;
         }
-        return stack.isDamageableItem() || stack.isEnchanted();
+        return stack.isDamageableItem() || stack.isEnchanted() || hasMeaningfulNbt(stack);
+    }
+
+    private static boolean hasMeaningfulNbt(ItemStack stack) {
+        var tag = stack.getTag();
+        if (tag == null || tag.isEmpty()) return false;
+        for (String key : tag.getAllKeys()) {
+            if (!BENIGN_NBT_KEYS.contains(key)) return true;
+        }
+        return false;
     }
 
     /**
@@ -150,21 +166,37 @@ public class HeuristicBookAdapter implements GuideSystemAdapter {
 
     @Override
     public void open(BookKey key, Player clientPlayer) {
+        open(key, clientPlayer, ItemStack.EMPTY);
+    }
+
+    @Override
+    public void open(BookKey key, Player clientPlayer, ItemStack sourceStack) {
         if (!clientPlayer.level().isClientSide) return;
-        Item item = ForgeRegistries.ITEMS.getValue(key.bookId());
-        if (item == null) return;
-        UseSimulator.simulateClientUse(new ItemStack(item), clientPlayer);
+        ItemStack opener = ItemRefs.openerFor(key.bookId(), sourceStack);
+        if (opener.isEmpty()) {
+            clientPlayer.displayClientMessage(
+                    Component.translatable("runictome.unknown_item", key.bookId().toString()), false);
+            return;
+        }
+        UseSimulator.simulateClientUse(opener, clientPlayer);
+    }
+
+    @Override
+    public void openServer(BookKey key, net.minecraft.server.level.ServerPlayer serverPlayer,
+                           ItemStack sourceStack) {
+        ItemStack opener = ItemRefs.openerFor(key.bookId(), sourceStack);
+        if (opener.isEmpty()) return;
+        UseSimulator.simulateServerUse(opener, serverPlayer);
     }
 
     @Override
     public Component displayName(BookKey key) {
-        Item item = ForgeRegistries.ITEMS.getValue(key.bookId());
+        Item item = ItemRefs.resolve(key.bookId());
         return item == null ? Component.literal(key.bookId().toString()) : item.getDescription().copy();
     }
 
     @Override
     public ItemStack displayIcon(BookKey key) {
-        Item item = ForgeRegistries.ITEMS.getValue(key.bookId());
-        return item == null ? ItemStack.EMPTY : new ItemStack(item);
+        return ItemRefs.stackOf(key.bookId());
     }
 }

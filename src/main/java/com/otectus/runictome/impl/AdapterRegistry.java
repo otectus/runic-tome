@@ -1,5 +1,6 @@
 package com.otectus.runictome.impl;
 
+import com.otectus.runictome.RunicTome;
 import com.otectus.runictome.api.BookKey;
 import com.otectus.runictome.api.GuideSystemAdapter;
 import com.otectus.runictome.api.IRunicTomeData;
@@ -43,28 +44,115 @@ public final class AdapterRegistry implements RunicTomeAPI.Delegate {
     /** systemId path prefix marking adapters owned by the datapack loader (reload-replaceable). */
     public static final String DATAPACK_PREFIX = "datapack/";
 
+    /** systemId path prefix marking adapters built from the common config (reload-replaceable). */
+    public static final String CONFIG_PREFIX = "config/";
+
+    /** systemId of the keyword catch-all, rebuilt alongside the config-derived adapters. */
+    public static final String HEURISTIC_PATH = "heuristic";
+
+    /** Adapters whose {@code identify} threw, so the failure is logged once rather than per stack. */
+    private final java.util.Set<ResourceLocation> failedIdentify =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * First-registration sequence per systemId. Precedence within a priority tier is registration
+     * order, and a reload-driven replacement must not change it: removing and re-inserting a
+     * config-derived adapter would otherwise move it behind every adapter registered after common
+     * setup (IMC, datapack, third-party), silently flipping which adapter claims a contested item
+     * and re-absorbing it under a different BookKey.
+     */
+    private final java.util.Map<ResourceLocation, Integer> firstSeen = new java.util.HashMap<>();
+    private int registrationCounter = 0;
+
     @Override
     public synchronized void registerAdapter(GuideSystemAdapter adapter) {
-        adapters.put(adapter.systemId(), adapter);
+        put(adapter);
         rebuildSnapshot();
     }
 
     /**
-     * Replaces the entire datapack-defined adapter set (those whose systemId path starts with
-     * {@link #DATAPACK_PREFIX}) in one pass, so a datapack reload doesn't leave stale entries.
+     * Removes a single adapter by systemId.
+     *
+     * @return true if an adapter was registered under that id.
+     */
+    public synchronized boolean unregisterAdapter(ResourceLocation systemId) {
+        boolean removed = adapters.remove(systemId) != null;
+        if (removed) {
+            failedIdentify.remove(systemId);
+            rebuildSnapshot();
+        }
+        return removed;
+    }
+
+    /**
+     * Replaces the entire datapack-defined adapter set (those whose systemId is in this mod's
+     * namespace and whose path starts with {@link #DATAPACK_PREFIX}) in one pass, so a datapack
+     * reload doesn't leave stale entries.
      */
     public synchronized void setDatapackAdapters(Collection<GuideSystemAdapter> datapackAdapters) {
-        adapters.values().removeIf(a -> a.systemId().getPath().startsWith(DATAPACK_PREFIX));
-        for (GuideSystemAdapter a : datapackAdapters) {
-            adapters.put(a.systemId(), a);
+        replaceOwned(id -> id.getPath().startsWith(DATAPACK_PREFIX), datapackAdapters);
+    }
+
+    /**
+     * Replaces the entire config-derived adapter set — the {@code extraBookItemIds} adapters and the
+     * keyword catch-all — in one pass. Used on every common-config load/reload so edits to
+     * {@code extraBookItemIds}, {@code absorbUnknownBooks}, {@code bookKeywords},
+     * {@code bookBlocklist} and {@code bookBlocklistMods} take effect without a restart. Passing a
+     * collection without a heuristic adapter therefore also removes a previously-registered one.
+     */
+    public synchronized void setConfigAdapters(Collection<GuideSystemAdapter> configAdapters) {
+        replaceOwned(
+                id -> id.getPath().startsWith(CONFIG_PREFIX) || HEURISTIC_PATH.equals(id.getPath()),
+                configAdapters);
+    }
+
+    /**
+     * Swaps out the adapters this mod owns and that match {@code ownedPath}, leaving every other
+     * adapter alone.
+     *
+     * <p>The namespace check matters: a third-party or datapack-declared systemId such as
+     * {@code somemod:config/guides} or {@code somemod:heuristic} is legal, and a namespace-blind
+     * path match would delete it on the next config reload with no way to get it back (IMC runs once
+     * per launch).
+     *
+     * <p>The new map is built completely before it is published, so an adapter whose
+     * {@code systemId()} throws cannot leave the registry half-mutated.
+     */
+    private void replaceOwned(java.util.function.Predicate<ResourceLocation> ownedPath,
+                              Collection<GuideSystemAdapter> replacements) {
+        LinkedHashMap<ResourceLocation, GuideSystemAdapter> rebuilt = new LinkedHashMap<>();
+        for (java.util.Map.Entry<ResourceLocation, GuideSystemAdapter> e : adapters.entrySet()) {
+            ResourceLocation id = e.getKey();
+            boolean owned = RunicTome.MOD_ID.equals(id.getNamespace()) && ownedPath.test(id);
+            if (!owned) rebuilt.put(id, e.getValue());
+        }
+        for (GuideSystemAdapter a : replacements) {
+            rebuilt.put(a.systemId(), a);
+        }
+        adapters.clear();
+        adapters.putAll(rebuilt);
+        for (GuideSystemAdapter a : replacements) {
+            failedIdentify.remove(a.systemId());
         }
         rebuildSnapshot();
     }
 
+    private void put(GuideSystemAdapter adapter) {
+        ResourceLocation id = adapter.systemId();
+        adapters.put(id, adapter);
+        firstSeen.putIfAbsent(id, registrationCounter++);
+        failedIdentify.remove(id);
+    }
+
     private void rebuildSnapshot() {
-        // Stable sort by descending priority preserves registration order within a tier.
+        // Descending priority, then first-registration order within a tier. Using the recorded
+        // sequence rather than current map order keeps precedence stable across reloads.
+        for (ResourceLocation id : adapters.keySet()) {
+            firstSeen.putIfAbsent(id, registrationCounter++);
+        }
         List<GuideSystemAdapter> rebuilt = new ArrayList<>(adapters.values());
-        rebuilt.sort(Comparator.comparingInt(GuideSystemAdapter::priority).reversed());
+        rebuilt.sort(Comparator.comparingInt(GuideSystemAdapter::priority).reversed()
+                .thenComparingInt(a -> firstSeen.getOrDefault(a.systemId(), Integer.MAX_VALUE)));
         snapshot = List.copyOf(rebuilt);
     }
 
@@ -78,9 +166,29 @@ public final class AdapterRegistry implements RunicTomeAPI.Delegate {
     @Override
     public Optional<BookKey> identify(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return Optional.empty();
+        try {
+            if (AbsorptionPolicy.isExcluded(stack)) return Optional.empty();
+        } catch (Throwable t) {
+            // Fail closed: if the safety gate itself cannot be evaluated, never claim the item.
+            RunicTome.LOGGER.error("Runic Tome: absorption policy threw; refusing to absorb", t);
+            return Optional.empty();
+        }
         for (GuideSystemAdapter a : snapshot) {
-            Optional<BookKey> result = a.identify(stack);
-            if (result.isPresent()) return result;
+            Optional<BookKey> result;
+            try {
+                result = a.identify(stack);
+            } catch (Throwable t) {
+                // A third-party / IMC / datapack adapter must never be able to abort an item pickup,
+                // an inventory sweep, or a craft. Isolate it, log once, and keep probing.
+                if (failedIdentify.add(a.systemId())) {
+                    RunicTome.LOGGER.error(
+                            "Runic Tome: adapter {} threw from identify() and will be skipped for this stack "
+                                    + "(further failures from this adapter are not logged)",
+                            a.systemId(), t);
+                }
+                continue;
+            }
+            if (result != null && result.isPresent()) return result;
         }
         return Optional.empty();
     }
@@ -99,17 +207,28 @@ public final class AdapterRegistry implements RunicTomeAPI.Delegate {
 
     @Override
     public UnlockResult unlockBook(ServerPlayer player, BookKey key) {
+        return unlockBook(player, key, ItemStack.EMPTY);
+    }
+
+    @Override
+    public UnlockResult unlockBook(ServerPlayer player, BookKey key, ItemStack sourceStack) {
         IRunicTomeData data = player.getCapability(RunicTomeCapabilities.PLAYER_DATA).orElse(null);
         if (data == null) {
             // Capability not attached (yet): report failure so the caller keeps the item.
             return UnlockResult.FAILED;
         }
-        if (!data.unlockBook(key)) {
+        boolean lackedStoredStack = data.getBookStack(key).isEmpty();
+        if (!data.unlockBook(key, sourceStack)) {
+            // A legacy save may know the key but not have retained its original stack. Reacquiring
+            // the book backfills that data and updates the client without showing a second unlock.
+            if (lackedStoredStack && !data.getBookStack(key).isEmpty()) {
+                RunicTomeNetwork.sendTo(player, new UnlockBookPacket(key, data.getBookStack(key)));
+            }
             return UnlockResult.ALREADY_HAD;
         }
         // Newly unlocked: an incremental packet is enough to update the client and toast.
         // A full SyncDataPacket is only needed on login/respawn/dimension change.
-        RunicTomeNetwork.sendTo(player, new UnlockBookPacket(key));
+        RunicTomeNetwork.sendTo(player, new UnlockBookPacket(key, data.getBookStack(key)));
         return UnlockResult.ADDED;
     }
 

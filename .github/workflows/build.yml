@@ -1,0 +1,65 @@
+name: Build
+
+# Keeps the test suite honest. None of the audit findings would have been caught by a compile alone,
+# but the suite that pins them is only worth having if it is actually run on every change.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A newer push to the same branch supersedes an in-flight run; ForgeGradle builds are not cheap.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          # Must match java.toolchain.languageVersion in build.gradle.
+          java-version: '17'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # ForgeGradle's decompile/remap output is large and slow to rebuild; caching it is the
+          # difference between a ~5 minute and a ~25 minute run.
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Derive SOURCE_DATE_EPOCH from the commit
+        # Makes the jar manifest reproducible (see build.gradle). The committer date is used rather
+        # than the wall clock so re-running this workflow on the same commit produces the same jar.
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: ./gradlew build --no-daemon --stacktrace
+
+      - name: Upload test results
+        # Always: a failing suite is exactly when the reports are worth reading.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: build/test-results/test/
+          if-no-files-found: warn
+
+      - name: Upload jar
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runictome-jar
+          path: build/libs/*.jar
+          if-no-files-found: error

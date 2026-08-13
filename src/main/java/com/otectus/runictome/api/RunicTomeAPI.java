@@ -27,6 +27,7 @@ public final class RunicTomeAPI {
         Collection<GuideSystemAdapter> allAdapters();
         boolean isBookUnlocked(Player player, BookKey key);
         UnlockResult unlockBook(ServerPlayer player, BookKey key);
+        UnlockResult unlockBook(ServerPlayer player, BookKey key, ItemStack sourceStack);
         boolean lockBook(ServerPlayer player, BookKey key);
         Collection<BookKey> getUnlockedBooks(Player player);
     }
@@ -38,6 +39,7 @@ public final class RunicTomeAPI {
         @Override public Collection<GuideSystemAdapter> allAdapters() { warn(); return java.util.List.of(); }
         @Override public boolean isBookUnlocked(Player player, BookKey key) { warn(); return false; }
         @Override public UnlockResult unlockBook(ServerPlayer player, BookKey key) { warn(); return UnlockResult.FAILED; }
+        @Override public UnlockResult unlockBook(ServerPlayer player, BookKey key, ItemStack sourceStack) { warn(); return UnlockResult.FAILED; }
         @Override public boolean lockBook(ServerPlayer player, BookKey key) { warn(); return false; }
         @Override public Collection<BookKey> getUnlockedBooks(Player player) { warn(); return java.util.List.of(); }
         private void warn() {
@@ -72,6 +74,10 @@ public final class RunicTomeAPI {
 
     public static UnlockResult unlockBook(ServerPlayer player, BookKey key) {
         return DELEGATE.unlockBook(player, key);
+    }
+
+    public static UnlockResult unlockBook(ServerPlayer player, BookKey key, ItemStack sourceStack) {
+        return DELEGATE.unlockBook(player, key, sourceStack);
     }
 
     public static boolean lockBook(ServerPlayer player, BookKey key) {

@@ -13,12 +13,14 @@ Open the tome to browse every manual you've ever collected. Click an entry. The 
 ## ✨ Features
 
 - **Absorbs every guide book you touch — without ever eating the wrong thing.** Ground pickup, crafting output, smelting output, quest rewards, KubeJS grants, /give commands, container close — all paths covered, near-instantly. A book is only removed once it's safely stored in your tome; if storage ever fails, the item is left untouched.
-- **One item, forever.** The tome is given on your first world join, has Epic rarity, stacks to 1, and is fire-resistant. Your unlocked books persist across death, item loss, and the tome itself — and corrupt entries can't break your save.
+- **One item, forever.** The tome is given on your first world join, has Epic rarity, stacks to 1, and is fire-resistant. Your unlocked books persist across death, item loss, and the loss of the tome itself — and corrupt entries can't break your save.
 - **Searchable library UI.** Opening the tome shows a scrolling list of every book you've collected, with real item icons and a live count. Search by name, **favorite** books (right-click) to pin them to the top, and **left-click** to launch the original book's native GUI.
+- **Take a book back out.** Every row has an **Extract** button that returns one physical copy with its original data and removes the virtual entry. Extracted copies are permanently exempt from re-absorption, so they stay physical — for you and for anyone else who picks them up.
 - **No inventory clutter.** Books live virtually in a per-player data store — not as real ItemStacks. Your inventory stays clean.
 - **Works with everything Patchouli.** Out of the box, Runic Tome recognises every Patchouli book in your pack — including mods that use custom book items (Ars Nouveau's Worn Notebook, Botania's Lexica Botania, and so on).
 - **Lots of built-in integrations.** Tinkers' Construct (all six books), Minecraft Comes Alive, Better Animals Plus, Immersive Engineering (manual), and Modonomicon are detected automatically — plus a keyword catch-all for guide books from mods with no explicit support.
 - **Modpack- and datapack-configurable.** Add any standalone book-like item via a simple config entry, or define books in a datapack (`data/<namespace>/runictome/books/*.json`) that syncs to clients. No code, no patching.
+- **Built for packmakers who don't want surprises.** `/runictome debug scan` tells you exactly which items in *your* pack your configuration would absorb — before a player loses something that mattered. More on this below.
 - **Mod-author friendly.** A small public API and IMC hooks let other mods register their own guide systems — or a single openable book.
 
 ---
@@ -28,7 +30,7 @@ Open the tome to browse every manual you've ever collected. Click an entry. The 
 1. **Join a world.** A Runic Tome appears in your inventory automatically.
 2. **Receive a guide book.** Any way. Pickup, craft, quest reward, `/give`, anything. The tome absorbs it near-instantly — you'll see the book disappear and a toast (with the book's name) confirming the unlock.
 3. **Right-click the tome.** A searchable, scrolling library opens listing every book you've collected, each with its icon.
-4. **Find and open.** Type to search, **left-click** an entry to open its native UI, or **right-click** to favorite it (favorites pin to the top).
+4. **Find and open.** Type to search, **left-click** an entry to open its native UI, **right-click** to favorite it (favorites pin to the top), or hit **Extract** to take a physical copy back out.
 5. **Close with Done or Escape.** Your tome goes back in your hotbar.
 
 That's it. No crafting recipe, no ritual, no GUI to learn. The mod is effectively invisible until you want to read.
@@ -59,25 +61,47 @@ extraBookItemIds = [
 
 ---
 
+## 🧰 For modpack authors
+
+Runic Tome works out of the box, but a big pack deserves a five-minute audit. The catch-all is deliberately broad, so the question worth answering is *"which items in **my** pack does my configuration actually absorb?"*
+
+Run **`/runictome debug scan`** in-game. It classifies every registered item through the same code path absorption uses and reports:
+
+- how many items would be absorbed, broken down by adapter and by mod;
+- the full list, grouped by mod, written to `runictome-scan.txt` in the server directory;
+- the items an adapter *wanted* but a global exclusion protected — i.e. what your exclusions are currently buying you.
+
+Anything in that first list that's functional gear rather than documentation goes into `absorbExclusionItems` / `absorbExclusionMods`, or the `#runictome:absorb_blocklist` tag. Config changes apply on reload, so you can iterate without restarting. Two more tools:
+
+- **`/runictome debug identify`** — hold an item and get a full explanation of how it's classified and whether it would be absorbed.
+- **`/runictome purge`** — if a functional book was absorbed before you excluded it, this lists the affected entries and `purge confirm` removes them. No save editing required.
+
+Every player-scoped command takes an optional target player, so you can inspect and repair a player's library from the server console.
+
+---
+
 ## ❓ FAQ
 
 **Q: Does this replace my existing books?**
-A: It absorbs them into a virtual library on first contact. The original books vanish, but you can still open them through the tome with one click — and the original mod's native UI is preserved.
+A: It absorbs them into a virtual library on first contact. The original books vanish, but you can still open them through the tome with one click — and the original mod's native UI is preserved. You can also pull a physical copy back out at any time with the **Extract** button.
+
+**Q: What happens to duplicates?**
+A: The tome stores exactly one copy of each book. By default the rest of the stack is consumed — absorbing a stack of eight identical lexicons keeps one and destroys the other seven, and picking up a book you already own consumes it. If you'd rather keep the extras, set `absorbWholeStack = false` in the config: the tome then takes one copy of each *new* book and never touches duplicates.
 
 **Q: What if I lose the tome?**
-A: Your unlocked books are stored per-player, not in the tome itself. Craft a new tome (or use `/give` — the mod will re-give it automatically on next login if you don't have one), and your full library is still there.
+A: Your unlocked books are stored per-player, not in the tome itself, and they survive death and item loss. The tome is also kept through death and is fire-resistant, so losing it takes effort. If you do destroy it, an operator can hand you another with `/runictome give` — the automatic grant only fires on your first join, and there is no crafting recipe.
 
 **Q: Does it work on dedicated servers?**
-A: Yes. The mod is server-authoritative — all absorption decisions happen server-side and the unlocked-book list is synced to clients. Install it on both sides.
+A: Yes. The mod is server-authoritative — all absorption decisions happen server-side and the unlocked-book list is synced to clients. Install **the same version** on both sides: Runic Tome checks its network protocol version at login and refuses a mismatch rather than misbehaving.
 
 **Q: Will it absorb something I don't want absorbed?**
-A: The keyword catch-all only matches book-like items and skips block items, vanilla books, and a configurable blocklist (including functional "spellbook"/"tome" gear from mods like Iron's Spells, Ars Nouveau, RPG Lore, and Scriptor). It also skips anything that *looks functional* — items whose path contains `spell`, `scroll`, `caster`, `focus`, `rune`, or `wand`, or that are damageable or enchanted — so functional gear with a book-like name is left alone. Packmakers get two override tags, `#runictome:guide_books` (force-absorb) and `#runictome:absorb_blocklist` (never absorb), and can run `/runictome debug identify` to see exactly how a held item would be classified. And nothing is ever destroyed on a failed unlock — if a book can't be stored, the item simply stays in your inventory.
+A: The keyword catch-all only matches book-like items and skips block items, vanilla books, and a configurable blocklist (including functional "spellbook"/"tome" gear from mods like Iron's Spells 'n Spellbooks, Ars Nouveau, and Scriptor). It also skips anything that *looks functional* — items whose path contains `spell`, `scroll`, `caster`, `focus`, `rune`, `wand`, `skill`, `level`, `xp`, `summon`, or `upgrade`, or that are damageable, enchanted, or carry meaningful NBT — so functional gear with a book-like name is left alone. On top of that, a global exclusion list of known functional books from large packs is always active, even if your config predates it. Packmakers get two override tags, `#runictome:guide_books` (force-absorb) and `#runictome:absorb_blocklist` (never absorb), plus `/runictome debug scan` to audit the whole pack up front. And nothing is ever destroyed on a failed unlock — if a book can't be stored, the item simply stays where it is.
 
 **Q: How do I add support for a book my mod uses?**
 A: If your mod uses Patchouli, it already works. If it uses a standalone item, add the item ID to `extraBookItemIds`. If you're building a new guide system, implement `GuideSystemAdapter` and register via IMC — see the GitHub README.
 
 **Q: What's the performance cost?**
-A: Negligible. Books are absorbed event-driven (on pickup, craft, smelt, and container close). A timer sweep runs once per second by default (configurable via `sweepIntervalTicks`) as a safety net for inventory inserts that bypass Forge events, e.g. `/give`.
+A: Negligible. Books are absorbed event-driven (on pickup, craft, smelt, and container close). A timer sweep runs once per second by default (configurable via `sweepIntervalTicks`) as a safety net for inventory inserts that bypass Forge events, e.g. `/give` — and players are staggered across the interval, so a busy server never pays for everyone on the same tick.
 
 ---
 
@@ -90,12 +114,15 @@ A: Negligible. Books are absorbed event-driven (on pickup, craft, smelt, and con
 
 Runic Tome has **no hard dependencies.** Patchouli and Tinkers' Construct are both detected at runtime if present — the mod will gracefully skip integrations that can't be loaded.
 
+On a server, install the same version on client and server.
+
 ---
 
 ## 🔗 Links
 
 - **GitHub:** https://github.com/otectus/runic-tome
 - **Issue tracker:** https://github.com/otectus/runic-tome/issues
+- **Changelog:** see `CHANGELOG.md` in the repo
 - **Architecture docs:** see `RUNIC-TOME-ARCHITECTURE.md` in the repo
 
 ---

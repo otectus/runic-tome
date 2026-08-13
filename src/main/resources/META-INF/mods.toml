@@ -23,10 +23,15 @@ description='''${mod_description}'''
     ordering="NONE"
     side="BOTH"
 
-# Phase 2: Patchouli integration (optional runtime dependency)
-# [[dependencies.${mod_id}]]
-#     modId="patchouli"
-#     mandatory=false
-#     versionRange="[1.20.1,)"
-#     ordering="AFTER"
-#     side="BOTH"
+# Patchouli is detected reflectively and is never required. Declaring it as an optional
+# dependency with ordering=AFTER makes Forge construct and dispatch lifecycle events to Patchouli
+# before us, which is what PatchouliGuideAdapter.tryInit() needs to find the API classes. It does
+# NOT guarantee BookRegistry is populated — books are loaded during resource/datapack load, after
+# common setup — so the custom-item map stays lazily built and is invalidated by
+# PatchouliReloadHandler on every datapack sync. Do not remove that laziness.
+[[dependencies.${mod_id}]]
+    modId="patchouli"
+    mandatory=false
+    versionRange="[1.20.1,)"
+    ordering="AFTER"
+    side="BOTH"

@@ -2,6 +2,7 @@ package com.otectus.runictome.integration;
 
 import com.otectus.runictome.api.BookKey;
 import com.otectus.runictome.api.GuideSystemAdapter;
+import com.otectus.runictome.impl.ItemRefs;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
@@ -43,14 +44,27 @@ public class ItemBasedAdapter implements GuideSystemAdapter {
 
     @Override
     public void open(BookKey key, Player clientPlayer) {
+        open(key, clientPlayer, ItemStack.EMPTY);
+    }
+
+    @Override
+    public void open(BookKey key, Player clientPlayer, ItemStack sourceStack) {
         if (!clientPlayer.level().isClientSide) return;
-        var item = ForgeRegistries.ITEMS.getValue(itemId);
-        if (item == null) {
+        ItemStack opener = ItemRefs.openerFor(itemId, sourceStack);
+        if (opener.isEmpty()) {
             clientPlayer.displayClientMessage(
                     Component.translatable("runictome.unknown_item", itemId.toString()), false);
             return;
         }
-        com.otectus.runictome.impl.UseSimulator.simulateClientUse(new ItemStack(item), clientPlayer);
+        com.otectus.runictome.impl.UseSimulator.simulateClientUse(opener, clientPlayer);
+    }
+
+    @Override
+    public void openServer(BookKey key, net.minecraft.server.level.ServerPlayer serverPlayer,
+                           ItemStack sourceStack) {
+        ItemStack opener = ItemRefs.openerFor(itemId, sourceStack);
+        if (opener.isEmpty()) return;
+        com.otectus.runictome.impl.UseSimulator.simulateServerUse(opener, serverPlayer);
     }
 
     @Override
@@ -70,7 +84,6 @@ public class ItemBasedAdapter implements GuideSystemAdapter {
 
     @Override
     public ItemStack displayIcon(BookKey key) {
-        var item = ForgeRegistries.ITEMS.getValue(itemId);
-        return item == null ? ItemStack.EMPTY : new ItemStack(item);
+        return ItemRefs.stackOf(itemId);
     }
 }

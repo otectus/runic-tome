@@ -23,7 +23,10 @@ public final class CapabilityEvents {
     @SubscribeEvent
     public static void onAttachCapabilities(AttachCapabilitiesEvent<net.minecraft.world.entity.Entity> event) {
         if (event.getObject() instanceof Player) {
-            if (!event.getObject().getCapability(RunicTomeCapabilities.PLAYER_DATA).isPresent()) {
+            // Check what this event has already gathered rather than calling getCapability() on the
+            // entity: the provider map is still being built while this event runs, so querying the
+            // object mid-gather depends on Forge internals.
+            if (!event.getCapabilities().containsKey(RunicTomeDataProvider.IDENTIFIER)) {
                 event.addCapability(RunicTomeDataProvider.IDENTIFIER, new RunicTomeDataProvider());
             }
         }
