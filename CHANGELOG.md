@@ -2,6 +2,94 @@
 
 All notable changes to Runic Tome are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.0.0] - 2026-09-01
+
+The tome finally looks like part of Minecraft. Every pixel of its screen used to be drawn in code
+with `fill()` and a hardcoded brown; it is now a proper textured, vanilla-style container window.
+
+**Upgrading.** Nothing under the hood moved. The network protocol stays `6` and the public API
+stays `4`, so a 1.0.0 client and a 0.9.0 server still talk to each other; saves, the config schema
+and datapacks are all untouched. The 1.0.0 number marks the interface settling down, not a break.
+
+The one thing that can surprise you is a **resource pack**: this release ships the mod's first GUI
+texture, `runictome:textures/gui/runic_tome.png`, and redraws the Curios slot icon
+`runictome:textures/slot/empty_runic_tome_slot.png`. A pack that overrode the old slot icon will
+still apply and will simply look like the old placeholder.
+
+### Added
+
+- **A textured, vanilla-style GUI.** The tome opens as a fixed 300x214 panel centred on screen,
+  the way vanilla's own container screens do, instead of stretching to fill the window. Panel,
+  troughs, buttons, scrollbar, row backgrounds and glyphs all come from a single 256x256 sprite
+  sheet.
+
+  Every colour in that sheet was sampled out of vanilla 1.20.1's own textures rather than picked by
+  eye: `generic_54.png` gives the panel (`#000000` outline, 2px `#FFFFFF` bevel, `#C6C6C6` face,
+  2px `#555555` shadow) and the troughs (`#373737` / `#8B8B8B` / `#FFFFFF`), and `widgets.png`
+  gives the buttons — including the detail that a hovered vanilla button swaps its outline to
+  white. The panel corner is chamfered because vanilla's is.
+
+  The panel size is not arbitrary. `Window.calculateScale` guarantees at least a 320x240 scaled
+  GUI at every legal scale, and 300x214 leaves a margin inside that at the floor. Its height is
+  what makes exactly six 22px rows fit the well.
+
+- **Copy and Extract are icon buttons with tooltips.** They were two hand-filled rectangles with
+  text labels eating about 100px of every row. As 16x16 icons with hover states and two-line
+  tooltips they give the book name column 205px instead of 138.
+
+  New strings: `gui.runictome.copy.tooltip`, `gui.runictome.extract.tooltip`,
+  `gui.runictome.favorite`, `gui.runictome.favorite.add`, `gui.runictome.favorite.remove`.
+
+- **The favourite star is a sprite, not a character.** Its appearance no longer depends on the
+  player's font or resource pack. A hollow outline star now appears on the hovered row whether or
+  not the book is favourited, which is the only hint that right-click toggles it; the gutter is a
+  fixed width either way, so names line up down the list. Each row also gained a vanilla slot
+  well behind its book icon.
+
+- **A real Curios slot icon.** The old one was a solid 8x8 grey block — a placeholder. It is now a
+  closed book with a spine and a rune mark on the cover, drawn to the same specification as
+  Curios' own eleven icons: 16x16, a 1px hollow outline in exactly `#555555`, inset from the
+  border, 52 opaque pixels inside their 32-54 range.
+
+### Changed
+
+- The bottom buttons are drawn from the mod's sheet rather than vanilla's `widgets.png`. Only
+  `renderWidget` is overridden, so the click sound, keyboard activation, focus handling and
+  narration are still vanilla's.
+- Book names are clipped once when a row is built instead of every frame for every visible row,
+  and the unlocked-count component is rebuilt only when the count changes. `ClientDataCache.size()`
+  is called every frame by design, so the things around it should not allocate.
+- The empty-library message now wraps. At roughly 340px it was always wider than the screen it was
+  centred on and had been clipping since it was introduced.
+
+### Fixed
+
+- Resizing the window while a search was active left the list filtered behind an apparently empty
+  search box: `Screen.resize` re-runs `init()`, which built a fresh `EditBox` while the filter
+  field kept the old query. The query and the scroll position now survive a resize.
+- The book list was being rendered twice per frame — once as a registered renderable widget and
+  again by an explicit call in `render()`.
+- Clicking a row no longer paints vanilla's white-and-black selection rectangles over it. Selection
+  was always being set on click; it was simply never meant to be drawn that way.
+
+### Internal
+
+- GUI art is generated, not hand-drawn: `tools/gui/generate_gui_sheet.py` is the palette and
+  geometry specification in executable form and emits both PNGs deterministically. It verifies its
+  own output before writing — exact-palette pixels only, no overlapping sprite rects, and uniform
+  nine-slice edge strips and centres. That last one matters because `blitRepeating` tiles those
+  regions and samples the centre of a partial tile, so a non-uniform strip produces a seam that
+  shows up at one panel width and not another. `--check` re-verifies the committed PNGs.
+- `GuiSheetTest` asserts the same properties against the shipped sheet, including that it is
+  exactly 256x256 — `blitNineSliced` hardcodes that texture size in 1.20.1, so any other size
+  silently rescales every UV.
+- The textured scrollbar is drawn in `renderDecorations`, not by overriding `render()`.
+  `AbstractSelectionList` paints its scrollbar as three `fill()` rects with no hook of its own, and
+  its `render()` is also what assigns the private `hovered` field, so overriding it outright would
+  cost every row its hover state.
+- Row hit-testing is recomputed from the list rather than cached during `render()`, so it no longer
+  depends on the row having been drawn at least once.
+
 ## [0.9.0] - 2026-08-21
 
 Two answers to the same complaint: the tome eats books you wanted to keep.

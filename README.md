@@ -45,8 +45,8 @@ No more dragging eight identical lexicons between ender chests. No more losing y
 4. Launch Minecraft. The tome will appear in your inventory the first time you join a world.
 
 **On a server, install the same version on both sides.** Runic Tome negotiates a network protocol
-version at login, and a mismatch is refused rather than silently tolerated. 0.6.0 uses protocol `5`;
-0.5.x used `4`, so a 0.6.0 client cannot join a 0.5.x server or vice versa.
+version at login, and a mismatch is refused rather than silently tolerated. 1.0.0 uses protocol `6`,
+unchanged since 0.9.0; 0.6.0-0.8.x used `5`, so a 1.0.0 client cannot join a 0.8.x server or vice versa.
 
 ### For modpack authors
 
