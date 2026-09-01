@@ -1,0 +1,7 @@
+{
+  "order": 210,
+  "size": 1,
+  "icon": "runictome:slot/empty_runic_tome_slot",
+  "drop_rule": "ALWAYS_KEEP",
+  "validators": ["curios:tag"]
+}

@@ -17,9 +17,13 @@ No more dragging eight identical lexicons between ender chests. No more losing y
 
 - **Automatic absorption — never loses a book you don't already have.** Guide books are consumed from your inventory the moment they arrive — no interaction required. Works with ground pickup, crafting output, smelting output, container-close (quest rewards, FTB popups, chests), direct inventory grants (KubeJS, `/give`), and a low-frequency safety sweep (configurable). A book is only ever removed once it's confirmed stored in your tome — if storage fails, the item is left untouched.
   **Absorption is deduplicating.** Exactly one copy of each book is ever retained, and extraction always returns one copy. What happens to the *rest* of a stack is controlled by `absorbWholeStack` (default `true`, matching every release before 0.6.0): absorbing a stack of eight identical lexicons stores one and destroys the other seven, and picking up a book you already have consumes it outright. Set `absorbWholeStack = false` to consume exactly one item per newly-unlocked book and leave the extras physical — duplicates of a book you already own are then never consumed at all.
+- **Add books deliberately, by crafting.** Put the Runic Tome and one or more books together in any crafting grid -- the 2x2 inventory grid or a 3x3 table -- and the output is the tome with those books filed into your library. Because it is an explicit act rather than an ambient sweep, this is the one channel that accepts a book you previously **extracted**, and the only way to store **vanilla** books: `book`, `writable_book`, `written_book`, `enchanted_book` and `knowledge_book` are never absorbed automatically. Each stack becomes its own entry, so two written books with different titles are two rows, and Extract returns the exact original item. An unrecognized item anywhere in the grid makes the recipe produce nothing, so nothing is ever consumed by surprise.
+- **Wearable with Curios (optional).** With Curios installed the tome gets its own `runic_tome` slot with a matching book icon, so it stops occupying an inventory slot for the entire game. It stays in the slot through death regardless of `keepInventory`, and newly granted tomes go straight there when the slot is free. Curios is entirely optional — without it nothing changes.
 - **Virtual storage.** Unlocked books live in a per-player server-side capability, persisted to disk and synced to the client. No duplicated ItemStacks, no inventory clutter. Corrupt or outdated entries are skipped on load rather than breaking your save.
 - **Searchable library UI.** The tome opens to a scrolling list of your books with their real item icons and a live count. **Search** by name, **favorite** any book (right-click) to pin it to the top, and **left-click** to launch the original book's native GUI. A book that fails to open tells you why instead of silently doing nothing.
 - **Physical extraction.** Click **Extract** beside an entry to return one physical book with its retained data and remove it from the virtual library. Extracted copies carry a persistent marker that exempts them from automatic re-absorption — including after an inventory-full drop, and for any other player who later picks them up. **The exemption survives everything short of an explicit operator command:** nothing in normal play clears it, so extract only what you want to keep physical. An operator holding the book can undo a mistaken extraction with `/runictome unmark`.
+- **Copies, for shelves and libraries.** Click **Copy** beside an entry to print a spare without giving the entry up. It costs `bookCopyCost` vanilla books (default one, and nothing at all in creative), and the copy carries the same never-re-absorb marker an extracted book does — which is the point: an unmarked duplicate of a book already in your library would be swallowed by the next inventory sweep about a second later. Copy is what you want for decorating a library room with item frames, lecterns and shelves; Extract is what you want for actually removing a book from the tome.
+- **Pause absorption when you need to.** The **Absorb: On / Off** button at the bottom of the tome screen stops the tome taking books you pick up, craft or carry, so you can sort a chest of dungeon loot in peace. It is per-player, survives death and relogging, and does **not** block deliberate absorption — crafting a book into the tome still works while paused, as does `/runictome unlock`.
 - **Patchouli support — zero compile-time dependency.** Runic Tome uses reflection to detect Patchouli at runtime and recognise **both** flavors of Patchouli books:
   - Generic `patchouli:guide_book` stacks with `{patchouli:book: "modid:book_id"}` NBT (fast NBT match).
   - Custom-item books declared with `dont_generate_book: true` (e.g. Ars Nouveau's Worn Notebook, Botania's Lexica Botania) — resolved by walking `BookRegistry` and mapping the book's item to its ID.
@@ -56,6 +60,15 @@ Runic Tome works out of the box with no configuration, but you can customise its
     # false = consume one item per newly-unlocked book and leave the extras physical
     absorbWholeStack = true
 
+    # Tome + book(s) in a crafting grid -> the tome, with the books added.
+    # Also accepts books that were previously extracted from the tome.
+    absorbViaCrafting = true
+    # Let that recipe accept vanilla books (book, writable_book, written_book,
+    # enchanted_book, knowledge_book). They are never absorbed ambiently.
+    # To allow written books but not enchanted ones, leave this on and add
+    # minecraft:enchanted_book to the #runictome:absorb_blocklist item tag.
+    craftingAcceptsVanillaBooks = true
+
 [integrations]
     # Extra item IDs to treat as single-item guide books.
     # Unknown or malformed IDs are logged and skipped.
@@ -82,6 +95,8 @@ Runic Tome works out of the box with no configuration, but you can customise its
 [ui]
     showUnlockToast = true         # DEPRECATED — moved to runictome-client.toml (see below)
     allowBookExtraction = true     # Let players return entries to physical items
+    allowBookCopying = true        # Let players duplicate an entry, keeping the entry
+    bookCopyCost = 1               # Vanilla books charged per copy (0 = free)
 
 [performance]
     # How often (in server ticks) the inventory-sweep fallback runs.
@@ -129,9 +144,10 @@ absorbed under an older configuration are not revoked — use `/runictome purge`
 
 1. Join a world. A **Runic Tome** appears in your inventory.
 2. Pick up, craft, or receive any supported guide book. It is absorbed near-instantly.
-3. Right-click the Runic Tome (or press the bound key) to open your library.
-4. Type in the search box to filter, **left-click** an entry to launch its native book UI, **right-click** to favorite it, or click **Extract** to return one physical copy.
-5. Scroll through the list. Press Escape or click **Done** to close.
+3. To add a book on purpose -- a vanilla written or enchanted book, or one you extracted earlier -- put it in a crafting grid alongside the tome and take the tome back out.
+4. Right-click the Runic Tome (or press the bound key) to open your library.
+5. Type in the search box to filter, **left-click** an entry to launch its native book UI, **right-click** to favorite it, click **Copy** to print a spare, or click **Extract** to return one physical copy.
+6. Scroll through the list. Click **Absorb: On / Off** to pause absorption, then press Escape or click **Done** to close.
 
 The tome itself has `EPIC` rarity, stacks to 1, and is fire-resistant — losing it is hard, but even if you do, your unlocked books are stored per-player and survive death, item loss, and the loss of the tome.
 
@@ -152,6 +168,24 @@ files. These built-in protections remain active when upgrading with an older com
 
 Additional books can be enabled via `extraBookItemIds` in the config or a datapack (`data/<namespace>/runictome/books/*.json`). For mod authors building new integrations, see [Integration API](#integration-api) below.
 
+### The Curios slot
+
+With [Curios](https://www.curseforge.com/minecraft/mc-mods/curios) installed the tome gets a
+dedicated `runic_tome` slot. It is declared purely in data, so a pack can change it without code:
+
+| File | Purpose |
+| --- | --- |
+| `data/runictome/curios/slots/runic_tome.json` | Slot definition — `order`, `icon`, `drop_rule` |
+| `data/runictome/curios/entities/player.json` | Attaches the slot to players |
+| `data/curios/tags/items/runic_tome.json` | Which items the slot accepts |
+
+Override any of them from a datapack to retexture the icon, move it in the slot order, or drop the
+slot entirely. Note the slot id is global across mods, and that `drop_rule` is also declared on the
+item itself as `ALWAYS_KEEP`, so removing it from the slot JSON alone will not make the tome
+droppable on death.
+
+Curios is optional. Without it these files load into nothing and the tome behaves exactly as before.
+
 ### Forcing or preventing absorption
 
 Two append-friendly item tags give packmakers explicit control over the catch-all, taking precedence **never-absorb > positive tag > heuristic**:
@@ -160,6 +194,8 @@ Two append-friendly item tags give packmakers explicit control over the catch-al
 - **`#runictome:absorb_blocklist`** — hard opt-out; an item here is never absorbed by any adapter, even if it is also in `guide_books`.
 
 Both ship empty (`"replace": false`); add entries from a datapack at `data/runictome/tags/items/<tag>.json`. Namespace-level exclusions go in the `bookBlocklistMods` config instead.
+
+Players have two controls of their own that need no config at all: the **Absorb: On / Off** toggle in the tome screen pauses ambient absorption for that player, and any book produced by **Copy** or **Extract** is permanently exempt from re-absorption. Note that `absorbOnPickup = false` alone does *not* stop the periodic inventory sweep — the player toggle and the exemption marker do.
 
 ### Auditing a modpack
 

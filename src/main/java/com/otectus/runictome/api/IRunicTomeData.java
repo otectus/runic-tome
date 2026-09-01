@@ -60,6 +60,25 @@ public interface IRunicTomeData extends INBTSerializable<CompoundTag> {
 
     void setReceivedTome(boolean value);
 
+    /**
+     * Whether the owner has switched off <em>ambient</em> absorption — ground pickup, craft and smelt
+     * output, and the periodic inventory sweep.
+     *
+     * <p>Deliberate absorption is unaffected: the tome-plus-book crafting recipe and
+     * {@code /runictome unlock} still work while paused. The distinction mirrors
+     * {@link com.otectus.runictome.impl.AbsorptionPolicy#isExcludedForExplicitAction} — pausing means
+     * "stop taking things on your own", not "refuse what I hand you".
+     *
+     * <p>A {@code default} method, not a new abstract one, so existing implementors of this public
+     * interface keep compiling; see {@link #setFavorite}.
+     */
+    default boolean isAbsorptionPaused() {
+        return false;
+    }
+
+    /** @see #isAbsorptionPaused() */
+    default void setAbsorptionPaused(boolean paused) {}
+
     /** Number of Runic Tomes stashed on the player's last death, pending restoration on respawn. */
     int getStashedTomes();
 

@@ -2,6 +2,186 @@
 
 All notable changes to Runic Tome are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-08-21
+
+Two answers to the same complaint: the tome eats books you wanted to keep.
+
+**Upgrading.** The network protocol moves `5` -> `6` and the public API `3` -> `4`, so client and
+server must both be on 0.9.0 — a mismatched peer is refused at connect rather than allowed in to
+misread the three new message ids. The API change is additive (new `default` interface methods and
+one new static; `RunicTomeAPI.Delegate` is unchanged), so integrators compiled against `3` still
+link. Saves gain one boolean that defaults to `false`; existing worlds load unchanged and no
+migration runs. The config schema gains two keys under `[ui]`. Datapacks are unaffected.
+
+### Added
+
+- **Copy a book without giving up the entry.** Every row in the tome now has a **Copy** button
+  beside **Extract**. Copy prints one physical book — full original data, exactly as Extract
+  would — and *keeps* the library entry, charging `bookCopyCost` vanilla books for it (default one;
+  creative-mode players are never charged).
+
+  The copy carries the same never-re-absorb marker an extracted book does, and that is not a
+  nicety: the book is still in the library, so an unmarked copy would be identified as an
+  already-owned duplicate and destroyed by the next inventory sweep roughly a second later. Marked
+  copies are what make a library room full of item frames, lecterns and shelves possible.
+
+  Unlike Extract, Copy leaves the screen open — furnishing a shelf means clicking it several times.
+
+  New config in `[ui]`: `allowBookCopying` (default `true`) and `bookCopyCost` (default `1`,
+  range `0`-`64`).
+
+- **A per-player absorption pause.** An **Absorb: On / Off** button at the bottom of the tome
+  screen stops the tome taking books that player picks up, crafts, smelts, or is merely carrying,
+  so a chest of dungeon loot can be sorted in peace. The setting is per player, is saved, and
+  survives death and dimension changes.
+
+  It deliberately does **not** cover deliberate absorption: crafting a book into the tome and
+  `/runictome unlock` both still work while paused. This is the same distinction
+  `AbsorptionPolicy.isExcludedForExplicitAction` already draws — pausing means "stop taking things
+  on your own", not "refuse what I hand you".
+
+  Exposed to integrators as `RunicTomeAPI.isAbsorptionPaused(Player)` and as
+  `isAbsorptionPaused` / `setAbsorptionPaused` on `IRunicTomeData`.
+
+### Changed
+
+- The library list widened from 240px to 280px so the second row button does not squeeze book
+  names; the name column keeps roughly the width it had. The scrollbar still clears Minecraft's
+  320px minimum scaled GUI width.
+- `RequestLimits` now keeps an independent token bucket per request *kind* rather than one shared
+  favorites bucket, so spamming one request type cannot throttle a player's legitimate use of
+  another. Copies and pause toggles are limited at a fixed 10/second; the favorite allowance is
+  still `maxFavoriteTogglesPerSecond`.
+- Row narration now names the copy and extract buttons. Both are drawn rather than being focusable
+  widgets, so a screen-reader user previously had no way to learn they existed.
+
+### Fixed
+
+- The unlocked-book count at the bottom of the tome screen was drawn underneath the **Done**
+  button, and was only invisible because widgets happen to render afterwards. It now sits in the
+  gap above the button row.
+
+### Internal
+
+- The give-or-drop hand-off used by extraction and the crafting refund is now one shared
+  `ItemDelivery.deliver`, rather than three near-identical copies of the same four lines.
+  `TomeGrant` keeps its own version, which tries the Curios slot first and answers with a
+  three-valued placement.
+
+## [0.8.0] - 2026-08-21
+
+The Runic Tome can now be worn in a Curios slot instead of occupying an inventory slot for the
+whole game.
+
+**Upgrading.** Saves, the network protocol (`5`), the public API (`3`), the config schema and
+existing datapacks are unchanged. Curios is **optional** — without it nothing changes, the new
+datapack files load into nothing, and no Curios class is ever loaded.
+
+### Added
+
+- **A dedicated Curios slot for the Runic Tome.** With [Curios](https://www.curseforge.com/minecraft/mc-mods/curios)
+  installed, the tome gets its own `runic_tome` slot with a book-shaped icon drawn to match the
+  built-in Curios slot art. The tome is a permanent, never-stacking, never-consumed item, so it is
+  exactly what a wearable slot is for.
+
+  The slot is declared entirely in data (`data/runictome/curios/slots/runic_tome.json`, its player
+  binding, and the `curios:runic_tome` item tag), so packs can retexture, reorder or remove it
+  without touching code.
+
+  Death behaviour is `ALWAYS_KEEP`, declared both on the slot and on the item — an equipped tome
+  stays in its slot through death regardless of the `keepInventory` gamerule or Curios' own
+  `keepCurios` setting. It therefore never reaches `LivingDropsEvent`, so the existing
+  stash-and-reissue path is simply never entered for it; a tome carried in the inventory still goes
+  through that path exactly as before.
+
+  Newly granted tomes — first join, `/runictome give`, and the respawn re-issue — now go to the
+  curio slot when it is empty, then the inventory, then the ground.
+
+### Fixed
+
+- **The open-library keybinding ignored equipped tomes.** `playerHoldsTome` scanned only the hands
+  and `inv.items`, so a tome in any slot outside the main inventory failed the check and the
+  keybinding silently did nothing. It now also asks Curios. This was latent before this release
+  (nothing could put the tome outside the inventory) but would have been an immediate regression
+  with the new slot.
+
+### Changed
+
+- The three places that granted a tome each repeated the same
+  `getInventory().add(...)` / else `drop(...)` idiom; they now share one `TomeGrant` helper, so the
+  curio-slot preference applies uniformly.
+- Dev-environment only: the `client`, `server` and `gameTestServer` run configurations now set
+  `mixin.env.remapRefMap`. Curios' mixin refmap is written in SRG names, and a ForgeGradle dev run
+  uses named mappings, so without this Curios fails to apply its mixins and the run dies at startup.
+  This affects nobody running a built jar.
+
+## [0.7.0] - 2026-08-21
+
+Books can now be added to the tome deliberately, by crafting, instead of only being absorbed
+ambiently — and that channel accepts two kinds of book the ambient one never will.
+
+**Upgrading.** Saves, the network protocol (`5`), datapacks and item tags are unchanged and load
+as-is. **The public API version moved from `2` to `3`**: `GuideSystemAdapter` gained two stack-aware
+default methods, which is source- and binary-compatible, so existing adapters need no changes. Two
+new config options default to `true` and add a capability rather than changing existing behaviour.
+
+### Added
+
+- **Add books to the tome by crafting.** Place the Runic Tome plus one or more books anywhere in a
+  crafting grid — the 2x2 inventory grid or a 3x3 table — and the output is the Runic Tome with
+  those books filed into your library. Gated by `absorption.absorbViaCrafting` (default `true`).
+
+  This is a deliberate act rather than an ambient sweep, so it accepts a book you previously
+  **extracted** from the tome; nothing short of `/runictome unmark` could re-file one before. Every
+  other protection still applies in full: hard-excluded and blocklisted items are refused, and an
+  unrecognized item anywhere in the grid makes the recipe produce nothing at all, so no ingredient
+  is ever consumed by surprise.
+
+  Implemented as a `CustomRecipe` (`runictome:tome_absorb`) rather than a datapack shapeless recipe,
+  because "is this a book" is decided at runtime by the adapter chain — config, item tags, datapack
+  definitions, IMC and reflective Patchouli detection — none of which is knowable at datapack-load
+  time. Packs can disable it with the config option, or override
+  `data/runictome/recipes/tome_absorb.json` with a `forge:false` condition.
+
+- **Vanilla books can be stored.** The crafting recipe accepts `book`, `writable_book`,
+  `written_book`, `enchanted_book` and `knowledge_book`, under
+  `absorption.craftingAcceptsVanillaBooks` (default `true`). These are still **never** absorbed
+  ambiently — crafting is the only way in, because eating somebody's Mending book off the ground
+  would be indefensible.
+
+  Every stack is stored under its own entry: two written books with different titles are two
+  entries, as are a Mending book and a Sharpness V book, because the key carries a stable digest of
+  the stack's NBT. Written books and books-and-quills open in the vanilla reader from the tome UI,
+  and Extract returns the exact original item.
+
+  Note that the tome still keeps exactly **one** copy per distinct book, so crafting in a second
+  identical enchanted book destroys it. To allow written books but not enchanted ones, add
+  `minecraft:enchanted_book` to the `#runictome:absorb_blocklist` item tag.
+
+### Changed
+
+- `GuideSystemAdapter` gained `displayName(BookKey, ItemStack)` and `displayIcon(BookKey, ItemStack)`
+  default methods, mirroring the existing stack-aware `open` overload. The library UI now passes the
+  retained stack when naming and drawing a row, so an entry whose key cannot name it — every written
+  book shares one item id — shows its real title. Existing adapters inherit the old behaviour
+  unchanged. API version `2` → `3`.
+
+### Fixed
+
+- **The Runic Tome itself was absorbable.** `HeuristicBookAdapter` skips this mod's namespace, but
+  `TaggedGuideBookAdapter` and the `extraBookItemIds` adapters do not. A datapack that put
+  `runictome:runic_tome` into `#runictome:guide_books`, or a pack that listed it in
+  `extraBookItemIds`, would have made the tome absorb *itself* on pickup — and would have destroyed
+  the output of any craft that produced one. `runictome:runic_tome` is now in the built-in
+  `absorbExclusionItems` defaults, which `rebuild()` always unions in, so it cannot be removed by
+  config or by a datapack overriding the tag.
+
+- **The extraction marker could mask a hard exclusion.** `AbsorptionPolicy.evaluate` tests the
+  marker first and short-circuits, so a stack that was both extracted *and* globally excluded
+  reported only `EXTRACTED`. The new explicit-action gate re-evaluates an unmarked copy, so a
+  functional book that had been extracted from a legacy library cannot be crafted back in past the
+  exclusion list.
+
 ## [0.6.0] - 2026-08-13
 
 Two passes ship together: the safety audit (see [`RUNIC-TOME-AUDIT.md`](./RUNIC-TOME-AUDIT.md) for

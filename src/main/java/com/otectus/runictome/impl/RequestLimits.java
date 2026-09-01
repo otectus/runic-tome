@@ -19,6 +19,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * gone, but a bounded request rate is still the difference between "a spamming client costs the
  * server what it costs itself" and "…costs it more".
  *
+ * <p>Buckets are per player <em>and</em> per {@link Kind}, so a client spamming one request type
+ * cannot throttle that player's legitimate use of another.
+ *
  * <p>The bucket is a token bucket in exact integer arithmetic. Tokens are counted in twentieths of a
  * token (one server tick's worth at 20 tps) so that a fractional per-tick refill rate never needs a
  * {@code double}, which would accumulate rounding error over a long-running server.
@@ -29,9 +32,53 @@ public final class RequestLimits {
     /** Server ticks per second — the unit tokens are scaled by. */
     static final int TICKS_PER_SECOND = 20;
 
-    private static final Map<UUID, Bucket> FAVORITE_BUCKETS = new ConcurrentHashMap<>();
+    /** Request types that carry their own independent allowance. */
+    public enum Kind {
+        /** Favorite toggles. Allowance is configurable via {@code maxFavoriteTogglesPerSecond}. */
+        FAVORITE(-1),
+        /**
+         * Absorption pause toggles. Each accepted one costs a small authoritative reply, so the
+         * allowance is fixed rather than configurable — there is no legitimate reason to click a
+         * toggle faster than this.
+         */
+        PAUSE(10),
+        /**
+         * Book copies. Worth limiting even though a copy normally costs a vanilla book: at
+         * {@code bookCopyCost = 0}, or in creative, it is free, and every request that overflows a
+         * full inventory spawns a ground entity.
+         */
+        COPY(10);
+
+        /** Fixed per-second allowance, or -1 when the caller supplies a configured one. */
+        private final int defaultPerSecond;
+
+        Kind(int defaultPerSecond) {
+            this.defaultPerSecond = defaultPerSecond;
+        }
+    }
+
+    private static final Map<Kind, Map<UUID, Bucket>> BUCKETS = new ConcurrentHashMap<>();
 
     private RequestLimits() {}
+
+    /**
+     * Consumes one token of {@code kind} for {@code player}, using that kind's built-in allowance.
+     *
+     * @param nowTicks the current server tick count.
+     * @return true if the request is within the allowance and may proceed.
+     */
+    public static boolean allow(Kind kind, ServerPlayer player, long nowTicks) {
+        return allow(kind, player.getUUID(), nowTicks, kind.defaultPerSecond);
+    }
+
+    /** Keyed by id rather than player, so the limiter can be exercised without a running server. */
+    public static boolean allow(Kind kind, UUID playerId, long nowTicks, int perSecond) {
+        if (perSecond <= 0) return true;
+        return BUCKETS
+                .computeIfAbsent(kind, k -> new ConcurrentHashMap<>())
+                .computeIfAbsent(playerId, id -> new Bucket())
+                .tryAcquire(nowTicks, perSecond);
+    }
 
     /**
      * Consumes one favorite-toggle token for {@code player}.
@@ -46,10 +93,7 @@ public final class RequestLimits {
 
     /** Keyed by id rather than player, so the limiter can be exercised without a running server. */
     public static boolean allowFavoriteToggle(UUID playerId, long nowTicks, int perSecond) {
-        if (perSecond <= 0) return true;
-        return FAVORITE_BUCKETS
-                .computeIfAbsent(playerId, id -> new Bucket())
-                .tryAcquire(nowTicks, perSecond);
+        return allow(Kind.FAVORITE, playerId, nowTicks, perSecond);
     }
 
     /** Full-bucket size for an allowance, in scaled tokens. */
@@ -57,14 +101,19 @@ public final class RequestLimits {
         return (long) perSecond * TICKS_PER_SECOND;
     }
 
-    /** Drops a player's buckets. Without this the map would grow with every unique player seen. */
+    /**
+     * Drops a player's buckets. Without this the maps would grow with every unique player seen —
+     * so this must clear <em>every</em> kind, not just the one that happened to be used.
+     */
     public static void forget(UUID playerId) {
-        FAVORITE_BUCKETS.remove(playerId);
+        for (Map<UUID, Bucket> byPlayer : BUCKETS.values()) {
+            byPlayer.remove(playerId);
+        }
     }
 
     /** Test hook: drops every bucket so one test cannot see another's accumulated state. */
     public static void reset() {
-        FAVORITE_BUCKETS.clear();
+        BUCKETS.clear();
     }
 
     @SubscribeEvent

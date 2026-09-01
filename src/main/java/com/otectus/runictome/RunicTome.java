@@ -9,6 +9,7 @@ import com.otectus.runictome.impl.ImcHandler;
 import com.otectus.runictome.integration.ModIntegrations;
 import com.otectus.runictome.item.ModItems;
 import com.otectus.runictome.network.RunicTomeNetwork;
+import com.otectus.runictome.recipe.ModRecipes;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -38,6 +39,7 @@ public class RunicTome {
         modBus.addListener(RunicTomeCapabilities::register);
 
         ModItems.register(modBus);
+        ModRecipes.register(modBus);
 
         ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, RunicTomeConfig.COMMON_SPEC);
         // Per-player display preferences. Registered on both sides: a CLIENT spec is a no-op on a

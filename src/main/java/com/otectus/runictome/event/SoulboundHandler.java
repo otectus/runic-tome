@@ -25,6 +25,13 @@ public final class SoulboundHandler {
 
     private SoulboundHandler() {}
 
+    /**
+     * Note the Curios interaction: the {@code runic_tome} curio slot declares
+     * {@code drop_rule: ALWAYS_KEEP} and the item declares the same rule, so an <em>equipped</em>
+     * tome is left in its slot and never reaches this event's drop list. The two mechanisms look
+     * like they should collide and do not — this handler only ever sees tomes that were carried in
+     * the inventory.
+     */
     @SubscribeEvent
     public static void onLivingDrops(LivingDropsEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer sp)) return;

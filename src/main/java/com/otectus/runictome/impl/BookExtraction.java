@@ -50,14 +50,8 @@ public final class BookExtraction {
         AbsorptionPolicy.markExtracted(extracted);
         Component extractedName = extracted.getHoverName();
 
-        // Inventory.add mutates the supplied stack. If it cannot accept the item, hand the same
-        // stack to the normal player-drop path. Do not remove the virtual entry unless one of those
-        // delivery paths succeeded.
-        boolean delivered = player.getInventory().add(extracted);
-        if (!delivered && !extracted.isEmpty()) {
-            delivered = player.drop(extracted, false) != null;
-        }
-        if (!delivered) {
+        // Do not remove the virtual entry unless the item actually reached the player.
+        if (!ItemDelivery.deliver(player, extracted)) {
             player.displayClientMessage(Component.translatable("runictome.extract.delivery_failed"), false);
             return Result.DELIVERY_FAILED;
         }

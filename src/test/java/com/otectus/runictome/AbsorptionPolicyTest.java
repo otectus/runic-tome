@@ -31,6 +31,35 @@ class AbsorptionPolicyTest {
     }
 
     @Test
+    void theRunicTomeIsGloballyExcludedFromAbsorption() {
+        // The tome must never be absorbable by any adapter at any priority: absorbing the library
+        // itself would destroy it, and a craft producing one would have its output eaten. The
+        // heuristic already skips this mod's namespace, but the tagged and extraBookItemIds
+        // adapters do not, so the guarantee lives in the always-unioned default exclusion list.
+        AbsorptionPolicy.rebuild(List.of(), List.of());
+        assertTrue(AbsorptionPolicy.isExcludedId(new ResourceLocation("runictome", "runic_tome")),
+                "the built-in defaults must survive a config that omits them");
+    }
+
+    @Test
+    void explicitActionIgnoresTheExtractionMarkerOnly() {
+        // Crafting a book into the tome is deliberate, so an extraction marker -- which exists to
+        // stop the ambient sweep -- must not block it. Every other exclusion still applies.
+        AbsorptionPolicy.rebuild(List.of("minecraft:book"), List.of());
+
+        ItemStack extracted = new ItemStack(Items.PAPER);
+        AbsorptionPolicy.markExtracted(extracted);
+        assertTrue(AbsorptionPolicy.isExcluded(extracted), "the sweep must still refuse it");
+        assertFalse(AbsorptionPolicy.isExcludedForExplicitAction(extracted),
+                "a deliberate craft may re-file an extracted book");
+
+        ItemStack blocklisted = new ItemStack(Items.BOOK);
+        AbsorptionPolicy.markExtracted(blocklisted);
+        assertTrue(AbsorptionPolicy.isExcludedForExplicitAction(blocklisted),
+                "a globally excluded item stays excluded however deliberately it is offered");
+    }
+
+    @Test
     void itemExclusionOverridesAdapters() {
         AbsorptionPolicy.rebuild(List.of("minecraft:book"), List.of());
         var decision = AbsorptionPolicy.evaluate(new ItemStack(Items.BOOK));

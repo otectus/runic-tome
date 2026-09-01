@@ -58,6 +58,9 @@ public final class ServerTickHandler {
     }
 
     public static void sweep(ServerPlayer sp) {
+        // Gated here rather than per-slot so the pause also covers the container-close sweep above,
+        // and so a paused player costs nothing to skip.
+        if (RunicTomeAPI.isAbsorptionPaused(sp)) return;
         Inventory inv = sp.getInventory();
         boolean changed = false;
         changed |= scanContainer(sp, inv.items);

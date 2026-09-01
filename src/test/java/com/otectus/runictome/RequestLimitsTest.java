@@ -139,4 +139,41 @@ class RequestLimitsTest {
         assertTrue(RequestLimits.allowFavoriteToggle(PLAYER, 1L, 200),
                 "a raised allowance must apply to a bucket that already exists");
     }
+
+    @Test
+    void eachRequestKindHasItsOwnAllowance() {
+        // Buckets are per player *and* per kind. If they were shared, a client spamming one request
+        // type would throttle that same player's legitimate use of every other type.
+        for (int i = 0; i < 10; i++) {
+            assertTrue(RequestLimits.allow(RequestLimits.Kind.COPY, PLAYER, 0L, 10),
+                    "copy request #" + i + " within the allowance was rejected");
+        }
+        assertFalse(RequestLimits.allow(RequestLimits.Kind.COPY, PLAYER, 0L, 10),
+                "the copy allowance should now be exhausted");
+
+        assertTrue(RequestLimits.allow(RequestLimits.Kind.PAUSE, PLAYER, 0L, 10),
+                "exhausting the copy bucket must not throttle a pause toggle");
+        assertTrue(RequestLimits.allowFavoriteToggle(PLAYER, 0L, 20),
+                "nor a favorite toggle");
+    }
+
+    @Test
+    void forgettingAPlayerDropsEveryKind() {
+        // The logout hook calls forget once. Clearing only the kind that happened to be used would
+        // leak a bucket per player per remaining kind for the lifetime of the server.
+        RequestLimits.allow(RequestLimits.Kind.COPY, PLAYER, 0L, 10);
+        RequestLimits.allow(RequestLimits.Kind.PAUSE, PLAYER, 0L, 10);
+        RequestLimits.allowFavoriteToggle(PLAYER, 0L, 20);
+
+        RequestLimits.forget(PLAYER);
+
+        // A forgotten player is indistinguishable from one who never made a request: a fresh bucket
+        // starts full, so the whole allowance is available again at the same tick.
+        for (int i = 0; i < 10; i++) {
+            assertTrue(RequestLimits.allow(RequestLimits.Kind.COPY, PLAYER, 0L, 10));
+        }
+        for (int i = 0; i < 10; i++) {
+            assertTrue(RequestLimits.allow(RequestLimits.Kind.PAUSE, PLAYER, 0L, 10));
+        }
+    }
 }

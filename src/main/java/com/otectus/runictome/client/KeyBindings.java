@@ -2,6 +2,7 @@ package com.otectus.runictome.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.otectus.runictome.RunicTome;
+import com.otectus.runictome.integration.curios.CuriosSupport;
 import com.otectus.runictome.item.ModItems;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -55,6 +56,9 @@ public final class KeyBindings {
         ItemStack main = player.getMainHandItem();
         ItemStack off = player.getOffhandItem();
         if (main.is(ModItems.RUNIC_TOME.get()) || off.is(ModItems.RUNIC_TOME.get())) return true;
+        // A tome worn in its Curios slot is in neither hand nor inv.items, so without this the
+        // keybinding silently stops working the moment a player equips it. No-ops without Curios.
+        if (CuriosSupport.isTomeEquipped(player)) return true;
         // Also check the full inventory so the keybinding works even when the
         // tome isn't actively selected — matches the UX of Akashic Tome.
         for (ItemStack s : inv.items) {

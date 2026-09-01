@@ -36,6 +36,7 @@ public final class AbsorptionHandler {
         if (event.isCanceled()) return;
         if (!RunicTomeConfig.COMMON.absorbOnPickup.get()) return;
         if (!(event.getEntity() instanceof ServerPlayer sp)) return;
+        if (RunicTomeAPI.isAbsorptionPaused(sp)) return;
         ItemStack stack = event.getItem().getItem();
         Optional<BookKey> maybe = RunicTomeAPI.identify(stack);
         if (maybe.isEmpty()) {
@@ -82,6 +83,7 @@ public final class AbsorptionHandler {
 
     private static void handleCreation(net.minecraft.world.entity.player.Player player, ItemStack stack) {
         if (!(player instanceof ServerPlayer sp)) return;
+        if (RunicTomeAPI.isAbsorptionPaused(sp)) return;
         Optional<BookKey> maybe = RunicTomeAPI.identify(stack);
         if (maybe.isEmpty()) return;
         UnlockResult result = RunicTomeAPI.unlockBook(sp, maybe.get(), stack);

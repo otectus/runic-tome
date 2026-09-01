@@ -91,4 +91,25 @@ public final class ClientDataCache {
     public static boolean toggleFavoriteOptimistic(BookKey key) {
         return DATA.toggleFavorite(key);
     }
+
+    public static boolean isAbsorptionPaused() {
+        return DATA.isAbsorptionPaused();
+    }
+
+    /**
+     * Applies the server's authoritative pause state. Absolute rather than a flip, for the reason
+     * given on {@link #acceptFavorite}: it must converge however it interleaves with the optimistic
+     * local set below.
+     */
+    public static void acceptAbsorptionPaused(boolean paused) {
+        DATA.setAbsorptionPaused(paused);
+    }
+
+    /**
+     * Optimistically applies a pause state client-side for instant UI feedback. The server answers
+     * with the authoritative value, which wins.
+     */
+    public static void setAbsorptionPausedOptimistic(boolean paused) {
+        DATA.setAbsorptionPaused(paused);
+    }
 }

@@ -165,9 +165,25 @@ public final class AdapterRegistry implements RunicTomeAPI.Delegate {
 
     @Override
     public Optional<BookKey> identify(ItemStack stack) {
+        return identify(stack, false);
+    }
+
+    /**
+     * {@link #identify} for a deliberate player action, which honours every exclusion except the
+     * extraction marker. Used by the crafting path so a book the owner pulled out of the tome can be
+     * filed back in; ambient absorption must keep using {@link #identify}.
+     */
+    public Optional<BookKey> identifyForExplicitAction(ItemStack stack) {
+        return identify(stack, true);
+    }
+
+    private Optional<BookKey> identify(ItemStack stack, boolean allowExtracted) {
         if (stack == null || stack.isEmpty()) return Optional.empty();
         try {
-            if (AbsorptionPolicy.isExcluded(stack)) return Optional.empty();
+            boolean excluded = allowExtracted
+                    ? AbsorptionPolicy.isExcludedForExplicitAction(stack)
+                    : AbsorptionPolicy.isExcluded(stack);
+            if (excluded) return Optional.empty();
         } catch (Throwable t) {
             // Fail closed: if the safety gate itself cannot be evaluated, never claim the item.
             RunicTome.LOGGER.error("Runic Tome: absorption policy threw; refusing to absorb", t);

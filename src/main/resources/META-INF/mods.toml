@@ -29,6 +29,17 @@ description='''${mod_description}'''
 # NOT guarantee BookRegistry is populated — books are loaded during resource/datapack load, after
 # common setup — so the custom-item map stays lazily built and is invalidated by
 # PatchouliReloadHandler on every datapack sync. Do not remove that laziness.
+# Curios is optional. ordering=AFTER guarantees Curios is constructed and its lifecycle events
+# dispatched before ours, so CuriosApi and its capabilities are initialised by the time
+# ModIntegrations.setupAll() runs during our commonSetup. Without Curios the slot/entity datapack
+# files load into nothing and no Curios-typed class is ever classloaded.
+[[dependencies.${mod_id}]]
+    modId="curios"
+    mandatory=false
+    versionRange="[5.9.1,)"
+    ordering="AFTER"
+    side="BOTH"
+
 [[dependencies.${mod_id}]]
     modId="patchouli"
     mandatory=false

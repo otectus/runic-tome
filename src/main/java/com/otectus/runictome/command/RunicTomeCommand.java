@@ -13,10 +13,10 @@ import com.otectus.runictome.api.RunicTomeAPI;
 import com.otectus.runictome.capability.RunicTomeCapabilities;
 import com.otectus.runictome.event.CapabilityEvents;
 import com.otectus.runictome.impl.AbsorptionPolicy;
+import com.otectus.runictome.impl.TomeGrant;
 import com.otectus.runictome.impl.AbsorptionScan;
 import com.otectus.runictome.integration.HeuristicBookAdapter;
 import com.otectus.runictome.integration.ModTags;
-import com.otectus.runictome.item.ModItems;
 import com.otectus.runictome.network.RunicTomeNetwork;
 import com.otectus.runictome.network.UnlockBookPacket;
 import net.minecraft.ChatFormatting;
@@ -209,10 +209,7 @@ public final class RunicTomeCommand {
     }
 
     private static int giveTome(CommandContext<CommandSourceStack> ctx, ServerPlayer player) {
-        ItemStack tome = new ItemStack(ModItems.RUNIC_TOME.get());
-        if (!player.getInventory().add(tome)) {
-            player.drop(tome, false);
-        }
+        TomeGrant.give(player);
         ctx.getSource().sendSuccess(
                 () -> Component.translatable("commands.runictome.give.success", name(player)), true);
         return 1;

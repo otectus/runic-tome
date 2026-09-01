@@ -18,6 +18,7 @@ public class RunicTomeData implements IRunicTomeData {
     private final LinkedHashSet<BookKey> favorites = new LinkedHashSet<>();
     private boolean receivedTome = false;
     private int stashedTomes = 0;
+    private boolean absorptionPaused = false;
 
     @Override
     public boolean hasBook(BookKey key) {
@@ -65,6 +66,7 @@ public class RunicTomeData implements IRunicTomeData {
         favorites.clear();
         receivedTome = false;
         stashedTomes = 0;
+        absorptionPaused = false;
     }
 
     /**
@@ -108,6 +110,16 @@ public class RunicTomeData implements IRunicTomeData {
     }
 
     @Override
+    public boolean isAbsorptionPaused() {
+        return absorptionPaused;
+    }
+
+    @Override
+    public void setAbsorptionPaused(boolean paused) {
+        this.absorptionPaused = paused;
+    }
+
+    @Override
     public int getStashedTomes() {
         return stashedTomes;
     }
@@ -128,6 +140,7 @@ public class RunicTomeData implements IRunicTomeData {
         this.favorites.addAll(other.getFavorites());
         this.receivedTome = other.hasReceivedTome();
         this.stashedTomes = other.getStashedTomes();
+        this.absorptionPaused = other.isAbsorptionPaused();
     }
 
     @Override
@@ -150,6 +163,7 @@ public class RunicTomeData implements IRunicTomeData {
         tag.put("favorites", favs);
         tag.putBoolean("receivedTome", receivedTome);
         tag.putInt("stashedTomes", stashedTomes);
+        tag.putBoolean("absorptionPaused", absorptionPaused);
         return tag;
     }
 
@@ -176,5 +190,8 @@ public class RunicTomeData implements IRunicTomeData {
         }
         this.receivedTome = tag.getBoolean("receivedTome");
         this.stashedTomes = tag.getInt("stashedTomes");
+        // Absent in saves written before 0.9.0; getBoolean answers false, which is the intended
+        // default for an upgraded world.
+        this.absorptionPaused = tag.getBoolean("absorptionPaused");
     }
 }

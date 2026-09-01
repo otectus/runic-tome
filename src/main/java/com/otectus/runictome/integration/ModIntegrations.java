@@ -46,6 +46,8 @@ public final class ModIntegrations {
         registerImmersiveEngineering();
         registerModonomicon();
         registerTaggedGuideBooks();
+        registerVanillaBooks();
+        com.otectus.runictome.integration.curios.CuriosSupport.setup();
         applyConfigAdapters();
         ready = true;
 
@@ -140,6 +142,17 @@ public final class ModIntegrations {
         RunicTomeAPI.registerAdapter(adapter);
         RunicTome.LOGGER.info("Registered {} adapter for {}", systemPrefix, itemId);
         return true;
+    }
+
+    /**
+     * Display/open/extract support for the vanilla book family. The adapter never claims a stack --
+     * its identify() is always empty -- so registering it cannot change what ambient absorption
+     * takes. It exists so the tome GUI can name, draw and open a vanilla book that the crafting
+     * recipe filed, and so extraction can hand the exact item back.
+     */
+    private static void registerVanillaBooks() {
+        RunicTomeAPI.registerAdapter(new VanillaBookAdapter());
+        RunicTome.LOGGER.info("Runic Tome: vanilla book adapter registered (display/extract only)");
     }
 
     private static void registerTaggedGuideBooks() {

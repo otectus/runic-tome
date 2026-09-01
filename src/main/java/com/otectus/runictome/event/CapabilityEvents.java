@@ -3,13 +3,12 @@ package com.otectus.runictome.event;
 import com.otectus.runictome.RunicTome;
 import com.otectus.runictome.api.IRunicTomeData;
 import com.otectus.runictome.capability.RunicTomeCapabilities;
+import com.otectus.runictome.impl.TomeGrant;
 import com.otectus.runictome.capability.RunicTomeDataProvider;
-import com.otectus.runictome.item.ModItems;
 import com.otectus.runictome.network.RunicTomeNetwork;
 import com.otectus.runictome.network.SyncDataPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.event.AttachCapabilitiesEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -42,19 +41,19 @@ public final class CapabilityEvents {
                         newData.copyFrom(oldData)));
         oldPlayer.invalidateCaps();
 
-        // Drain any tomes stashed during death (see SoulboundHandler) back into
-        // the new player's inventory. Non-death clones never populate the stash
-        // so this branch is a no-op for dimension changes / end-portal returns.
+        // Drain any tomes stashed during death (see SoulboundHandler) back to the new player.
+        // Non-death clones never populate the stash so this branch is a no-op for dimension
+        // changes / end-portal returns.
+        //
+        // With Curios installed the stash is usually empty even on death: the curio slot declares
+        // ALWAYS_KEEP, so an equipped tome never enters LivingDropsEvent and SoulboundHandler never
+        // sees it. This path still covers tomes carried in the inventory.
         newPlayer.getCapability(RunicTomeCapabilities.PLAYER_DATA).ifPresent(newData -> {
             int stashed = newData.getStashedTomes();
             if (stashed > 0) {
-                // stacksTo=1, so we re-add as individual stacks to land in
-                // separate slots rather than a single count-N ItemStack.
+                // stacksTo=1, so grant one at a time rather than a single count-N stack.
                 for (int i = 0; i < stashed; i++) {
-                    ItemStack stack = new ItemStack(ModItems.RUNIC_TOME.get());
-                    if (!newPlayer.getInventory().add(stack)) {
-                        newPlayer.drop(stack, false);
-                    }
+                    TomeGrant.give(newPlayer);
                 }
                 newData.setStashedTomes(0);
             }

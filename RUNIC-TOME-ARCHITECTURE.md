@@ -141,6 +141,51 @@ Implementation details:
 
 If the player somehow loses the tome, you may want a **configurable recovery** mechanism (e.g. a `/rune tome` command or crafting recipe) rather than re‑granting based on the first‑join flag.
 
+> **As built (0.7.0):** recovery is `/runictome give`, not a recipe. A recipe *does* exist
+> (`runictome:tome_absorb`) but it is the opposite shape — it takes a tome and books and returns the
+> same tome — so it can never mint one. See §4.5.
+
+***
+
+### 3.x Deliberate absorption: the crafting channel *(as built, 0.7.0)*
+
+The three ambient channels below (pickup, creation output, inventory sweep) all decide *for* the
+player. A fourth, deliberate channel exists: put the tome and one or more books in a crafting grid
+and the output is the tome, with the books filed.
+
+Three design constraints shaped it.
+
+**It cannot be a datapack recipe.** "Is this a book" is resolved at runtime by the adapter chain —
+common config, item tags, datapack book definitions, IMC registrations and reflective Patchouli
+detection — all of which reload independently of the recipe manager. No fixed `Ingredient` can
+express that, so it is a `CustomRecipe` with a `SimpleCraftingRecipeSerializer` and a two-key JSON
+stub whose only job is to make the recipe manager instantiate it.
+
+**The recipe cannot write to the library.** `assemble` receives no `Player` and is re-run for the
+grid *preview* on every slot change, so unlocking there would file a book the moment it was placed.
+The write lives in a `PlayerEvent.ItemCraftedEvent` handler — the same event `AbsorptionHandler`
+uses, but read against the craft *matrix* rather than the output. That event fires from
+`ResultSlot.checkTakeAchievements`, before the ingredient-shrink loop in `ResultSlot.onTake`, so the
+grid is still fully populated and a book that could not be stored can still be handed back before
+vanilla takes it.
+
+**Both sides must not disagree, but only one has authority.** `CraftingMenu.slotChangedCraftingGrid`
+is server-guarded, so the client's result slot only ever holds what the server sent. The client does
+still run its own `RecipeManager` inside the predicted `ResultSlot.onTake`; if it disagreed there,
+`RecipeManager.getRemainingItemsFor` would fall through to returning the grid's own stacks *by
+reference* and `onTake` would `grow` each slot by its own count, visibly doubling the player's books
+until the next sync. Since `identify` reads the COMMON config and Forge does not sync COMMON
+configs, that disagreement is reachable on a dedicated server. The client therefore answers `matches`
+on **shape alone** — exactly one tome plus at least one other item — a deliberate superset that
+cannot approve a craft the server refused.
+
+The vanilla book family (`book`, `writable_book`, `written_book`, `enchanted_book`,
+`knowledge_book`) rides on this channel only. `VanillaBookAdapter.identify` returns empty
+unconditionally, so the adapter is invisible to ambient absorption; the crafting path calls its
+static `keyFor` directly. Because all five share one item id apiece, the `BookKey` carries an
+eight-hex digest of a key-sorted rendering of the stack's NBT — sorted, not the tag's own map order,
+because an unstable digest would orphan the stored entry and mint a duplicate on the next craft.
+
 ***
 
 ## 4. Detecting and Registering Guide Books from Other Mods

@@ -14,8 +14,12 @@ public final class RunicTomeNetwork {
      * Bumped 4 -> 5 in 0.6.0 by {@link SyncFavoritePacket}, which added a message id. Both sides
      * must agree on the id-to-class mapping, so a 0.5.x peer is correctly refused rather than
      * allowed to connect and misread ids 5 and 6.
+     *
+     * <p>Bumped 5 -> 6 in 0.9.0 by {@link CopyBookPacket}, {@link SetAbsorptionPausedPacket} and
+     * {@link SyncAbsorptionPausedPacket}, which add ids 7, 8 and 9. A 0.8.x peer is refused at
+     * connect rather than allowed in to misread them.
      */
-    private static final String PROTOCOL_VERSION = "5";
+    private static final String PROTOCOL_VERSION = "6";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.ChannelBuilder
             .named(new ResourceLocation(RunicTome.MOD_ID, "main"))
@@ -71,6 +75,25 @@ public final class RunicTomeNetwork {
                 .encoder(SyncFavoritePacket::encode)
                 .decoder(SyncFavoritePacket::decode)
                 .consumerMainThread(SyncFavoritePacket::handle)
+                .add();
+
+        // 0.9.0 additions, likewise appended rather than inserted.
+        CHANNEL.messageBuilder(CopyBookPacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(CopyBookPacket::encode)
+                .decoder(CopyBookPacket::decode)
+                .consumerMainThread(CopyBookPacket::handle)
+                .add();
+
+        CHANNEL.messageBuilder(SetAbsorptionPausedPacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(SetAbsorptionPausedPacket::encode)
+                .decoder(SetAbsorptionPausedPacket::decode)
+                .consumerMainThread(SetAbsorptionPausedPacket::handle)
+                .add();
+
+        CHANNEL.messageBuilder(SyncAbsorptionPausedPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(SyncAbsorptionPausedPacket::encode)
+                .decoder(SyncAbsorptionPausedPacket::decode)
+                .consumerMainThread(SyncAbsorptionPausedPacket::handle)
                 .add();
     }
 

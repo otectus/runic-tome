@@ -8,6 +8,10 @@ public final class RunicTomeConfig {
 
     public static final List<String> DEFAULT_ABSORB_EXCLUSION_ITEMS =
             List.of(
+                    // Never absorbable by any adapter at any priority: absorbing the library itself
+                    // would destroy it. The heuristic already skips this mod's namespace, but the
+                    // tagged and extraBookItemIds adapters do not.
+                    "runictome:runic_tome",
                     "epicfight:skillbook",
                     "runicskills:leveling_book",
                     "legendary_additions:experience_book",
@@ -80,9 +84,35 @@ public final class RunicTomeConfig {
         return !COMMON_SPEC.isLoaded() || COMMON.absorbWholeStack.get();
     }
 
+    /**
+     * Whether the tome-plus-books crafting recipe is enabled. Tolerates an unloaded spec because
+     * {@link com.otectus.runictome.impl.TomeCraftingMatcher} is unit-tested without one, and because
+     * recipe matching can be reached before the config file is read.
+     */
+    public static boolean absorbViaCrafting() {
+        return !COMMON_SPEC.isLoaded() || COMMON.absorbViaCrafting.get();
+    }
+
+    /** Whether that recipe accepts the vanilla book family. Spec-tolerant for the same reasons. */
+    public static boolean craftingAcceptsVanillaBooks() {
+        return !COMMON_SPEC.isLoaded() || COMMON.craftingAcceptsVanillaBooks.get();
+    }
+
+    /** Whether players may copy an unlocked book. Spec-tolerant; see {@link #absorbWholeStack()}. */
+    public static boolean allowBookCopying() {
+        return !COMMON_SPEC.isLoaded() || COMMON.allowBookCopying.get();
+    }
+
+    /** Vanilla books charged per copy. Spec-tolerant; see {@link #absorbWholeStack()}. */
+    public static int bookCopyCost() {
+        return COMMON_SPEC.isLoaded() ? COMMON.bookCopyCost.get() : 1;
+    }
+
     public static final class Common {
         public final ForgeConfigSpec.BooleanValue absorbOnPickup;
         public final ForgeConfigSpec.BooleanValue absorbOnCraft;
+        public final ForgeConfigSpec.BooleanValue absorbViaCrafting;
+        public final ForgeConfigSpec.BooleanValue craftingAcceptsVanillaBooks;
         public final ForgeConfigSpec.BooleanValue verboseLogging;
         public final ForgeConfigSpec.ConfigValue<List<? extends String>> extraBookItemIds;
         public final ForgeConfigSpec.BooleanValue absorbUnknownBooks;
@@ -93,6 +123,8 @@ public final class RunicTomeConfig {
         public final ForgeConfigSpec.ConfigValue<List<? extends String>> absorbExclusionMods;
         public final ForgeConfigSpec.BooleanValue showUnlockToast;
         public final ForgeConfigSpec.BooleanValue allowBookExtraction;
+        public final ForgeConfigSpec.BooleanValue allowBookCopying;
+        public final ForgeConfigSpec.IntValue bookCopyCost;
         public final ForgeConfigSpec.BooleanValue absorbWholeStack;
         public final ForgeConfigSpec.IntValue sweepIntervalTicks;
         public final ForgeConfigSpec.IntValue maxFavoriteTogglesPerSecond;
@@ -115,6 +147,27 @@ public final class RunicTomeConfig {
                     "consumed at all -- extras stay in your inventory, on the ground, or in the",
                     "crafting output.")
                     .define("absorbWholeStack", true);
+            absorbViaCrafting = b.comment(
+                    "Enable the crafting recipe that files books into the tome: place the Runic Tome",
+                    "plus one or more books in any crafting grid (the 2x2 inventory grid or a crafting",
+                    "table) and the output is the Runic Tome with those books added.",
+                    "Unlike the ambient absorption above this is a deliberate player action, so it also",
+                    "accepts a book that was previously extracted from the tome. Books that are hard",
+                    "excluded (absorbExclusionItems/Mods, #runictome:absorb_blocklist) are still refused,",
+                    "and an unrecognized item anywhere in the grid makes the recipe produce nothing.")
+                    .define("absorbViaCrafting", true);
+            craftingAcceptsVanillaBooks = b.comment(
+                    "Let the crafting recipe accept the vanilla book family: book, writable_book,",
+                    "written_book, enchanted_book and knowledge_book. These are never absorbed",
+                    "ambiently -- crafting is the only way in, because eating somebody's Mending book",
+                    "off the ground would be indefensible.",
+                    "Each stack is stored under its own entry (two written books with different titles",
+                    "are two entries) and can be extracted again to recover the exact item.",
+                    "NOTE: the tome keeps exactly ONE copy per distinct book, so crafting in a second",
+                    "identical enchanted book destroys it. To allow written books but not enchanted",
+                    "ones, leave this enabled and add minecraft:enchanted_book to the",
+                    "#runictome:absorb_blocklist item tag.")
+                    .define("craftingAcceptsVanillaBooks", true);
             b.pop();
 
             b.push("integrations");
@@ -195,6 +248,16 @@ public final class RunicTomeConfig {
                     "Allow players to extract an unlocked book back into a physical item.",
                     "Extracted stacks retain their data and are marked so inventory sweeps do not re-absorb them.")
                     .define("allowBookExtraction", true);
+            allowBookCopying = b.comment(
+                    "Allow players to copy an unlocked book without removing it from their tome.",
+                    "Unlike extraction the library entry is kept, so the copy costs bookCopyCost",
+                    "vanilla books. Copies carry the same no-re-absorb mark extracted books do, which",
+                    "is what makes them usable as decorative shelf and item-frame books.")
+                    .define("allowBookCopying", true);
+            bookCopyCost = b.comment(
+                    "Vanilla minecraft:book items consumed per copy. 0 makes copying free.",
+                    "Creative-mode players are never charged regardless of this value.")
+                    .defineInRange("bookCopyCost", 1, 0, 64);
             b.pop();
 
             b.push("performance");

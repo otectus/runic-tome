@@ -71,7 +71,21 @@ public interface GuideSystemAdapter {
         return Component.literal(NameFormat.titleCase(key.bookId().getPath()));
     }
 
+    /**
+     * Stack-aware display name. The default preserves source compatibility for existing adapters;
+     * generic adapters override it when the key alone cannot name the entry -- every written book
+     * shares one item id, and only the retained stack carries its title.
+     */
+    default Component displayName(BookKey key, ItemStack sourceStack) {
+        return displayName(key);
+    }
+
     default ItemStack displayIcon(BookKey key) {
         return ItemStack.EMPTY;
+    }
+
+    /** Stack-aware counterpart of {@link #displayIcon(BookKey)}. */
+    default ItemStack displayIcon(BookKey key, ItemStack sourceStack) {
+        return displayIcon(key);
     }
 }

@@ -34,17 +34,28 @@ minecraft {
             }
         }
 
+        // Curios ships mixins whose refmap is written in SRG names. A ForgeGradle dev run uses
+        // named mappings, so without these two properties Mixin looks up f_19803_ in a class that
+        // calls it firstTick and Curios fails to apply, taking the whole run down. output.srg comes
+        // from ForgeGradle's own createSrgToMcp task. Only needed because a *dependency* has
+        // mixins -- this mod has none of its own.
         client {
             property 'forge.enabledGameTestNamespaces', mod_id
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
         }
 
         server {
             property 'forge.enabledGameTestNamespaces', mod_id
             args '--nogui'
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
         }
 
         gameTestServer {
             property 'forge.enabledGameTestNamespaces', mod_id
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
         }
 
         data {
@@ -58,6 +69,11 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 repositories {
     mavenCentral()
+    // Curios API. Note this is TheIllusiveC4's own maven, NOT BlameJared.
+    maven {
+        name = 'Illusive Soulworks'
+        url = 'https://maven.theillusivec4.top/'
+    }
     // Phase 2: Patchouli (CurseMaven or vazkii maven). Enable when Phase 2 starts.
     // maven { url = 'https://maven.blamejared.com' }
     // maven {
@@ -68,6 +84,12 @@ repositories {
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    // Curios is optional at runtime. The ':api' jar has no mods.toml and cannot be loaded as a
+    // mod, so the full jar is needed for runClient/runGameTestServer; the api jar is all we
+    // compile against. Every class naming a Curios type sits behind CuriosSupport's ModList gate.
+    compileOnly fg.deobf("top.theillusivec4.curios:curios-forge:${curios_version}:api")
+    runtimeOnly fg.deobf("top.theillusivec4.curios:curios-forge:${curios_version}")
 
     // Phase 2: Patchouli (pin exact version at implementation time)
     // implementation fg.deobf("vazkii.patchouli:Patchouli:1.20.1-84-FORGE")

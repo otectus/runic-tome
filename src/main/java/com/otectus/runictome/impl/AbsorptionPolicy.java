@@ -69,6 +69,29 @@ public final class AbsorptionPolicy {
     }
 
     /**
+     * The exclusion gate for a <em>deliberate</em> player action -- today, crafting a book into the
+     * tome. Identical to {@link #isExcluded} except that an extraction marker does not exclude.
+     *
+     * <p>The marker means "the periodic sweep must not take this back", not "the owner may never
+     * re-file it". Every other exclusion (virtual stacks, the global item and namespace lists, the
+     * {@code #runictome:absorb_blocklist} tag) still applies in full: those protect functional books
+     * that must stay physical no matter how deliberately a player asks.
+     */
+    public static boolean isExcludedForExplicitAction(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return false;
+        Decision decision = evaluate(stack);
+        if (!decision.excluded()) return false;
+        if (decision.reason() != Reason.EXTRACTED) return true;
+        // Do NOT stop here. evaluate() tests the marker first and short-circuits, so a stack that is
+        // both extracted and hard-excluded reports EXTRACTED and would otherwise slip through this
+        // gate -- handing the crafting path exactly the functional books the exclusion list exists
+        // to protect. Re-evaluate an unmarked copy so every other reason is still consulted.
+        ItemStack unmarked = stack.copy();
+        clearExtracted(unmarked);
+        return evaluate(unmarked).excluded();
+    }
+
+    /**
      * How many items to consume from a source stack after an unlock attempt — the single decision
      * every absorption site (pickup, craft, smelt, inventory sweep) must agree on.
      *

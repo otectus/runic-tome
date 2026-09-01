@@ -4,9 +4,11 @@ import com.otectus.runictome.api.BookKey;
 import com.otectus.runictome.api.GuideSystemAdapter;
 import com.otectus.runictome.api.RunicTomeAPI;
 import com.otectus.runictome.client.ClientDataCache;
+import com.otectus.runictome.network.CopyBookPacket;
 import com.otectus.runictome.network.ExtractBookPacket;
 import com.otectus.runictome.network.OpenBookPacket;
 import com.otectus.runictome.network.RunicTomeNetwork;
+import com.otectus.runictome.network.SetAbsorptionPausedPacket;
 import com.otectus.runictome.network.ToggleFavoritePacket;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -14,6 +16,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.ObjectSelectionList;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.narration.NarratedElementType;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
@@ -30,18 +33,31 @@ import java.util.Optional;
 /**
  * Searchable, scrollable Runic Tome UI. Lists unlocked guide books with their item icon and
  * display name, favorites pinned to the top. Left-click opens a book, right-click toggles its
- * favorite flag, and each row has a button that extracts the physical book. Uses
+ * favorite flag, and each row has buttons that copy or extract the physical book. Uses
  * {@link ObjectSelectionList} so scrolling and selection are handled by the
  * vanilla widget rather than hand-rolled paging.
  */
 public class RunicTomeScreen extends Screen {
 
-    private static final int LIST_WIDTH = 240;
+    // Widened from 240 in 0.9.0 to make room for the copy button without squeezing book names.
+    // getScrollbarPosition() puts the bar at width/2 + 144, which still clears Minecraft's 320px
+    // minimum scaled GUI width.
+    private static final int LIST_WIDTH = 280;
     private static final int ROW_HEIGHT = 22;
     private static final int EXTRACT_WIDTH = 54;
+    private static final int COPY_WIDTH = 44;
+    /** Gap between the copy and extract buttons. */
+    private static final int BUTTON_GAP = 2;
+
+    private static final int BUTTON_BORDER = 0xFFA08050;
+    private static final int BUTTON_FILL = 0xFF453824;
+    private static final int BUTTON_FILL_HOVER = 0xFF6B5435;
 
     private EditBox searchBox;
     private BookList list;
+    private Button pauseButton;
+    private boolean pauseLabelShowsPaused;
+    private boolean pauseLabelInitialized;
     private String filter = "";
 
     public RunicTomeScreen() {
@@ -66,6 +82,14 @@ public class RunicTomeScreen extends Screen {
         this.list = new BookList(this.minecraft, this.width, this.height, listTop, listBottom, ROW_HEIGHT);
         addRenderableWidget(this.list);
 
+        // Left of DONE on the same row. 74 wide starting at width/2 - 128, so on a 320px minimum
+        // scaled screen it begins at x=32 and is still fully visible.
+        this.pauseButton = Button.builder(absorbLabel(), b -> toggleAbsorptionPaused())
+                .bounds(this.width / 2 - 128, this.height - 28, 74, 20)
+                .tooltip(Tooltip.create(Component.translatable("gui.runictome.absorb.tooltip")))
+                .build();
+        addRenderableWidget(this.pauseButton);
+
         addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
                 .bounds(this.width / 2 - 50, this.height - 28, 100, 20)
                 .build());
@@ -81,6 +105,10 @@ public class RunicTomeScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        // Re-read the cache rather than trusting the optimistic flip in toggleAbsorptionPaused: if
+        // the server rejects a toggle it answers with the true state, and the button must follow it.
+        // The rows self-correct the same way, by reading favorites fresh on every render.
+        syncPauseLabel();
         this.renderBackground(graphics);
         this.list.render(graphics, mouseX, mouseY, partialTick);
 
@@ -89,7 +117,10 @@ public class RunicTomeScreen extends Screen {
         int total = ClientDataCache.size();
         Component count = Component.translatable("screen.runictome.count", total)
                 .withStyle(ChatFormatting.GRAY);
-        graphics.drawCenteredString(this.font, count, this.width / 2, this.height - 14, 0xA0A0A0);
+        // Exactly fills the 8px gap between the list's bottom edge (height - 36) and the top of the
+        // button row (height - 28). At its old height-14 it ran underneath the Done button and was
+        // only invisible because super.render draws widgets afterwards.
+        graphics.drawCenteredString(this.font, count, this.width / 2, this.height - 36, 0xA0A0A0);
 
         // Widgets (search box, done button) render via super.
         super.render(graphics, mouseX, mouseY, partialTick);
@@ -132,6 +163,36 @@ public class RunicTomeScreen extends Screen {
         onClose();
     }
 
+    private void copyEntry(BookKey key) {
+        RunicTomeNetwork.sendToServer(new CopyBookPacket(key));
+        // Deliberately does not close, unlike extraction: copying leaves the entry in place, so the
+        // row stays valid and a player furnishing a shelf can click it several times.
+    }
+
+    private Component absorbLabel() {
+        return Component.translatable(ClientDataCache.isAbsorptionPaused()
+                ? "gui.runictome.absorb.off" : "gui.runictome.absorb.on");
+    }
+
+    private void toggleAbsorptionPaused() {
+        // Optimistic local flip for instant feedback; the server answers with the authoritative
+        // value, which converges because both sides set an absolute state rather than flipping.
+        boolean paused = !ClientDataCache.isAbsorptionPaused();
+        ClientDataCache.setAbsorptionPausedOptimistic(paused);
+        RunicTomeNetwork.sendToServer(new SetAbsorptionPausedPacket(paused));
+        syncPauseLabel();
+    }
+
+    /** Points the toggle's label at whatever the cache currently holds. */
+    private void syncPauseLabel() {
+        if (this.pauseButton == null) return;
+        boolean paused = ClientDataCache.isAbsorptionPaused();
+        if (paused == this.pauseLabelShowsPaused && this.pauseLabelInitialized) return;
+        this.pauseLabelShowsPaused = paused;
+        this.pauseLabelInitialized = true;
+        this.pauseButton.setMessage(absorbLabel());
+    }
+
     @Override
     public boolean isPauseScreen() {
         return false;
@@ -168,9 +229,12 @@ public class RunicTomeScreen extends Screen {
             List<Row> rows = new ArrayList<>();
             for (BookKey key : books) {
                 Optional<GuideSystemAdapter> adapter = RunicTomeAPI.adapterFor(key.systemId());
-                Component name = adapter.map(a -> a.displayName(key))
+                // The retained stack is what names an entry whose key cannot: every written book
+                // shares one item id and only the stack carries its title.
+                ItemStack retained = ClientDataCache.getBookStack(key);
+                Component name = adapter.map(a -> a.displayName(key, retained))
                         .orElse(Component.literal(key.bookId().toString()));
-                ItemStack icon = adapter.map(a -> a.displayIcon(key)).orElse(ItemStack.EMPTY);
+                ItemStack icon = adapter.map(a -> a.displayIcon(key, retained)).orElse(ItemStack.EMPTY);
                 if (!filter.isEmpty() && !name.getString().toLowerCase(Locale.ROOT).contains(filter)) {
                     continue;
                 }
@@ -187,9 +251,12 @@ public class RunicTomeScreen extends Screen {
             private final BookKey key;
             private final Component name;
             private final ItemStack icon;
+            // Written during render() and read by mouseClicked, so hit-testing depends on the row
+            // having been drawn at least once — which it always has by the time it can be clicked.
+            private int copyX;
             private int extractX;
-            private int extractY;
-            private int extractHeight;
+            private int buttonY;
+            private int buttonHeight;
 
             Row(BookKey key, Component name, ItemStack icon) {
                 this.key = key;
@@ -216,19 +283,15 @@ public class RunicTomeScreen extends Screen {
                     label = this.name.copy().withStyle(ChatFormatting.YELLOW);
                 }
                 this.extractX = left + width - EXTRACT_WIDTH - 3;
-                this.extractY = top + 2;
-                this.extractHeight = height - 4;
-                int buttonColor = mouseX >= this.extractX && mouseX < this.extractX + EXTRACT_WIDTH
-                        && mouseY >= this.extractY && mouseY < this.extractY + this.extractHeight
-                        ? 0xFF6B5435 : 0xFF453824;
-                graphics.fill(this.extractX, this.extractY,
-                        this.extractX + EXTRACT_WIDTH, this.extractY + this.extractHeight, 0xFFA08050);
-                graphics.fill(this.extractX + 1, this.extractY + 1,
-                        this.extractX + EXTRACT_WIDTH - 1, this.extractY + this.extractHeight - 1, buttonColor);
-                graphics.drawCenteredString(mc.font, Component.translatable("gui.runictome.extract"),
-                        this.extractX + EXTRACT_WIDTH / 2, top + (height - 8) / 2, 0xFFFFFF);
+                this.copyX = this.extractX - COPY_WIDTH - BUTTON_GAP;
+                this.buttonY = top + 2;
+                this.buttonHeight = height - 4;
+                drawRowButton(graphics, mc, this.copyX, COPY_WIDTH, mouseX, mouseY,
+                        Component.translatable("gui.runictome.copy"));
+                drawRowButton(graphics, mc, this.extractX, EXTRACT_WIDTH, mouseX, mouseY,
+                        Component.translatable("gui.runictome.extract"));
 
-                int availableTextWidth = Math.max(0, this.extractX - textX - 5);
+                int availableTextWidth = Math.max(0, this.copyX - textX - 5);
                 String text = mc.font.plainSubstrByWidth(label.getString(), availableTextWidth);
                 if (!text.equals(label.getString())) {
                     text = text + "...";
@@ -237,10 +300,32 @@ public class RunicTomeScreen extends Screen {
                         hovering ? 0xFFFF99 : 0xE0E0E0);
             }
 
+            /** One row button, drawn in the shared border/fill/hover style. */
+            private void drawRowButton(GuiGraphics graphics, Minecraft mc, int x, int buttonWidth,
+                                       int mouseX, int mouseY, Component label) {
+                int fill = hits(x, buttonWidth, mouseX, mouseY) ? BUTTON_FILL_HOVER : BUTTON_FILL;
+                graphics.fill(x, this.buttonY, x + buttonWidth, this.buttonY + this.buttonHeight,
+                        BUTTON_BORDER);
+                graphics.fill(x + 1, this.buttonY + 1, x + buttonWidth - 1,
+                        this.buttonY + this.buttonHeight - 1, fill);
+                graphics.drawCenteredString(mc.font, label, x + buttonWidth / 2,
+                        this.buttonY + (this.buttonHeight - 8) / 2, 0xFFFFFF);
+            }
+
+            private boolean hits(int x, int buttonWidth, double mouseX, double mouseY) {
+                return mouseX >= x && mouseX < x + buttonWidth
+                        && mouseY >= this.buttonY && mouseY < this.buttonY + this.buttonHeight;
+            }
+
             @Override
             public boolean mouseClicked(double mouseX, double mouseY, int button) {
-                if (button == 0 && mouseX >= this.extractX && mouseX < this.extractX + EXTRACT_WIDTH
-                        && mouseY >= this.extractY && mouseY < this.extractY + this.extractHeight) {
+                // Both button rects must be tested before the generic left-click-opens branch below,
+                // or a click on either would open the book instead.
+                if (button == 0 && hits(this.copyX, COPY_WIDTH, mouseX, mouseY)) {
+                    copyEntry(this.key);
+                    return true;
+                }
+                if (button == 0 && hits(this.extractX, EXTRACT_WIDTH, mouseX, mouseY)) {
                     extractEntry(this.key);
                     return true;
                 }
@@ -257,7 +342,9 @@ public class RunicTomeScreen extends Screen {
 
             @Override
             public Component getNarration() {
-                return this.name;
+                // The row carries two mouse-only controls that are drawn rather than being focusable
+                // widgets, so name them here or a screen-reader user has no way to learn they exist.
+                return Component.translatable("screen.runictome.row.narration", this.name);
             }
         }
     }
